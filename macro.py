@@ -74,6 +74,25 @@ def detect_wifi_interface():
     except: pass
     return "WiFi"
 
+def get_all_network_interfaces():
+    interfaces = []
+    try:
+        res = subprocess.run('netsh interface show interface', shell=True, capture_output=True, text=True)
+        if res.returncode == 0:
+            for line in res.stdout.splitlines():
+                parts = line.split()
+                if len(parts) >= 4 and parts[0] in ['Enabled', 'Disabled', 'Aktiviert', 'Deaktiviert']:
+                    # Interface name is usually the last part
+                    interface_name = ' '.join(parts[3:])
+                    if interface_name and interface_name not in interfaces:
+                        interfaces.append(interface_name)
+    except: pass
+    
+    if not interfaces:
+        interfaces = [detect_wifi_interface()]
+    
+    return interfaces
+
 def get_current_wifi_profile():
     try:
         res = subprocess.run('netsh wlan show interfaces', shell=True, capture_output=True, text=True)
@@ -233,7 +252,7 @@ def run_complex_macro():
     
     c = state["config"]
     
-    # Exakte Timings aus MacroUI.exe
+    # Optimized timing constants
     CLICK_PERIOD = 0.0437  # 22.88 CPS
     HOLD_TIME = 0.03
     PHASE2_DURATION = 1.85
@@ -328,7 +347,7 @@ def run_complex_macro():
                     time.sleep(min(0.005, remaining))
 
     # Execute - Run sequentially like original
-    print(">> MACRO: Starting (MacroUI.exe timings)")
+    print(">> MACRO: Starting")
     task_phase1()
     task_phase2()
     
@@ -413,16 +432,19 @@ class App(tk.Tk):
         self.cb_net_method = ttk.Combobox(self.frame, values=["netsh", "Clumsy"], font=THEME["font_mono"])
         self.cb_net_method.set(state["config"].get("network_method", "netsh"))
         self.cb_net_method.pack(fill="x", pady=2)
-        # tk.Label(self.frame, text="NETWORK INTERFACE (netsh):", bg=THEME["bg"], fg=THEME["fg"], font=THEME["font_mono"]).pack(anchor="w", pady=(10,0))
-        tk.Label(self.frame, text="NETWORK INTERFACE:", bg=THEME["bg"], fg=THEME["fg"], font=THEME["font_mono"]).pack(anchor="w")
+        self.cb_net_method.bind("<<ComboboxSelected>>", lambda e: self.toggle_network_fields())
+        
+        # Create widgets but don't pack them yet
+        self.lbl_iface = tk.Label(self.frame, text="NETWORK INTERFACE:", bg=THEME["bg"], fg=THEME["fg"], font=THEME["font_mono"])
         self.e_iface = tk.Entry(self.frame, bg="#222", fg="white", font=THEME["font_mono"])
         self.e_iface.insert(0, str(state["config"].get("net_interface", "WiFi")))
-        self.e_iface.pack(fill="x", pady=2)
 
-        tk.Label(self.frame, text="CLUMSY HOTKEY:", bg=THEME["bg"], fg=THEME["fg"], font=THEME["font_mono"]).pack(anchor="w", pady=(10,0))
+        self.lbl_clumsy_key = tk.Label(self.frame, text="CLUMSY HOTKEY:", bg=THEME["bg"], fg=THEME["fg"], font=THEME["font_mono"])
         self.e_clumsy_key = tk.Entry(self.frame, bg="#222", fg="white", font=THEME["font_mono"])
         self.e_clumsy_key.insert(0, str(state["config"].get("clumsy_hotkey", "[")))
-        self.e_clumsy_key.pack(fill="x", pady=2)
+        
+        # Show the correct fields based on method
+        self.toggle_network_fields()
 
         tk.Label(self.frame, text="TRIGGER KEY:", bg=THEME["bg"], fg=THEME["fg"], font=THEME["font_mono"]).pack(anchor="w", pady=(10,0))
         self.cb_trig = ttk.Combobox(self.frame, values=keys, font=THEME["font_mono"]); self.cb_trig.set(state["config"]["key_macro_trigger"]); self.cb_trig.pack(fill="x", pady=2)
@@ -453,6 +475,22 @@ class App(tk.Tk):
         HackerButton(f_btn, text="SAVE SETTINGS", command=self.save).pack(fill="x", pady=2)
         self.btn_ov = HackerButton(f_btn, text="DISABLE OVERLAY", command=self.toggle_ov); self.btn_ov.pack(fill="x", pady=2)
         HackerButton(f_btn, text="RELOAD TOOL", command=lambda: os.execv(sys.executable, [sys.executable] + sys.argv), bg="#330000").pack(fill="x", pady=2)
+
+    def toggle_network_fields(self):
+        method = self.cb_net_method.get()
+        
+        # Hide both first
+        self.lbl_iface.pack_forget()
+        self.e_iface.pack_forget()
+        self.lbl_clumsy_key.pack_forget()
+        self.e_clumsy_key.pack_forget()
+        
+        if method == "Clumsy":
+            self.lbl_clumsy_key.pack(anchor="w", pady=(10,0), after=self.cb_net_method)
+            self.e_clumsy_key.pack(fill="x", pady=2, after=self.lbl_clumsy_key)
+        else:
+            self.lbl_iface.pack(anchor="w", pady=(10,0), after=self.cb_net_method)
+            self.e_iface.pack(fill="x", pady=2, after=self.lbl_iface)
 
     def save(self):
         c = state["config"]
