@@ -747,17 +747,24 @@ class App(tk.Tk):
         # Set current value or default
         current_iface = state["config"].get("net_interface", "")
         current_type = state["config"].get("net_interface_type", "Unknown")
-        current_display = f"{current_iface} ({current_type})"
         
-        if current_display in interface_values:
-            self.cb_iface.set(current_display)
-        elif (
-            interface_values and interface_values[0] != "No active interfaces detected"
-        ):
-            self.cb_iface.set(interface_values[0])
-        elif current_iface:
-            # Fallback to stored value even if not detected
-            self.cb_iface.set(current_display)
+        # Try to find a matching interface in the detected list
+        selected = False
+        if current_iface:
+            for iface_display in interface_values:
+                # Check if the interface name matches (handle both formats)
+                if current_iface in iface_display:
+                    self.cb_iface.set(iface_display)
+                    selected = True
+                    break
+        
+        # If not found, use first available or fallback
+        if not selected:
+            if interface_values and interface_values[0] != "No active interfaces detected":
+                self.cb_iface.set(interface_values[0])
+            elif current_iface:
+                # Fallback to stored value even if not detected
+                self.cb_iface.set(f"{current_iface} ({current_type})")
         
         self.cb_iface.pack(fill="x", pady=2)
         
@@ -928,11 +935,11 @@ class App(tk.Tk):
         self.frame_netsh.pack_forget()
         self.frame_clumsy.pack_forget()
         
-        # Show appropriate frame
+        # Show appropriate frame right after the network method dropdown
         if method == "Clumsy":
-            self.frame_clumsy.pack(fill="x", pady=2)
+            self.frame_clumsy.pack(after=self.cb_net_method, fill="x", pady=2)
         else:  # netsh
-            self.frame_netsh.pack(fill="x", pady=2)
+            self.frame_netsh.pack(after=self.cb_net_method, fill="x", pady=2)
     
     def on_method_change(self, event=None):
         """Handle network method change"""
