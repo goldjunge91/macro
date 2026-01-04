@@ -712,36 +712,43 @@ class App(tk.Tk):
         )
         self.cb_net_method.set(state["config"].get("network_method", "netsh"))
         self.cb_net_method.pack(fill="x", pady=2)
-
-        tk.Label(
-            self.frame,
+        self.cb_net_method.bind("<<ComboboxSelected>>", self.on_method_change)
+        
+        # Create frames for conditional display
+        self.frame_netsh = tk.Frame(self.frame, bg=THEME["bg"])
+        self.frame_clumsy = tk.Frame(self.frame, bg=THEME["bg"])
+        
+        # Netsh Interface Selection
+        self.lbl_iface = tk.Label(
+            self.frame_netsh,
             text="NETWORK INTERFACE:",
             bg=THEME["bg"],
             fg=THEME["fg"],
             font=THEME["font_mono"],
-        ).pack(anchor="w")
-
+        )
+        self.lbl_iface.pack(anchor="w")
+        
         # Detect active interfaces
         active_interfaces = get_active_network_interfaces()
         interface_values = []
         for iface in active_interfaces:
             interface_values.append(f"{iface['name']} ({iface['type']})")
-
+        
         if not interface_values:
             interface_values = ["No active interfaces detected"]
-
+        
         self.cb_iface = ttk.Combobox(
-            self.frame,
+            self.frame_netsh,
             values=interface_values,
             font=THEME["font_mono"],
             state="readonly",
         )
-
+        
         # Set current value or default
         current_iface = state["config"].get("net_interface", "")
         current_type = state["config"].get("net_interface_type", "Unknown")
         current_display = f"{current_iface} ({current_type})"
-
+        
         if current_display in interface_values:
             self.cb_iface.set(current_display)
         elif (
@@ -751,29 +758,35 @@ class App(tk.Tk):
         elif current_iface:
             # Fallback to stored value even if not detected
             self.cb_iface.set(current_display)
-
+        
         self.cb_iface.pack(fill="x", pady=2)
-
+        
         # Add refresh button
-        HackerButton(
-            self.frame,
+        self.btn_refresh = HackerButton(
+            self.frame_netsh,
             text="REFRESH INTERFACES",
             command=self.refresh_interfaces,
             bg="#003333",
-        ).pack(fill="x", pady=2)
+        )
+        self.btn_refresh.pack(fill="x", pady=2)
 
-        tk.Label(
-            self.frame,
+        # Clumsy Hotkey
+        self.lbl_clumsy = tk.Label(
+            self.frame_clumsy,
             text="CLUMSY HOTKEY:",
             bg=THEME["bg"],
             fg=THEME["fg"],
             font=THEME["font_mono"],
-        ).pack(anchor="w", pady=(10, 0))
+        )
+        self.lbl_clumsy.pack(anchor="w")
         self.e_clumsy_key = tk.Entry(
-            self.frame, bg="#222", fg="white", font=THEME["font_mono"]
+            self.frame_clumsy, bg="#222", fg="white", font=THEME["font_mono"]
         )
         self.e_clumsy_key.insert(0, str(state["config"].get("clumsy_hotkey", "[")))
         self.e_clumsy_key.pack(fill="x", pady=2)
+        
+        # Show appropriate frame based on method
+        self.update_method_display()
 
         tk.Label(
             self.frame,
@@ -906,6 +919,24 @@ class App(tk.Tk):
         messagebox.showinfo(
             "Refresh", f"Found {len(active_interfaces)} active interface(s)"
         )
+    
+    def update_method_display(self):
+        """Show/hide interface or clumsy settings based on selected method"""
+        method = self.cb_net_method.get()
+        
+        # Hide both frames first
+        self.frame_netsh.pack_forget()
+        self.frame_clumsy.pack_forget()
+        
+        # Show appropriate frame
+        if method == "Clumsy":
+            self.frame_clumsy.pack(fill="x", pady=2)
+        else:  # netsh
+            self.frame_netsh.pack(fill="x", pady=2)
+    
+    def on_method_change(self, event=None):
+        """Handle network method change"""
+        self.update_method_display()
 
     def toggle_macro(self):
         state["config"]["macro_enabled"] = not state["config"].get(
