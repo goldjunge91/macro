@@ -27,24 +27,21 @@ from pynput import keyboard
 # --- CONFIGURATION ---
 CONFIG_FILE = "macro_config.json"
 DEFAULT_CONFIG = {
-    "click_cps": 22.88,
+    "click_cps": 18,
     "key_macro_trigger": "Key.f3",
-    "net_interface": "Auto-Detect",
-    "network_method": "netsh",
-    "clumsy_hotkey": "[",
+    "net_interface": "WiFi",
+    "network_method": "Clumsy",
+    "clumsy_hotkey": "8",
     "macro_disconnect_mode": "Before Click Start",
     "macro_hold_start": 0.0,
-    "macro_hold_len": 0.9,
-    "macro_net_start": 0.0,
-    "macro_net_len": 2.01,
-    "macro_spam_start": 2.01,
-    "macro_spam_len": 1.85,
-    "macro_bracket_offset": 1.61,
-    "macro_bracket_hold": 0.004,
-    "macro_click_hold": 0.03,
+    "macro_hold_len": 1.0,
+    "macro_net_start": 0.81,
+    "macro_net_len": 2.5,
+    "macro_spam_start": 0.74,
+    "macro_spam_len": 3.0,
     "overlay_enabled": True,
-    "overlay_x": 20,
-    "overlay_y": 20
+    "overlay_x": -165,
+    "overlay_y": 31
 }
 
 state = {
@@ -73,25 +70,6 @@ def detect_wifi_interface():
             if match: return match.group(1).strip()
     except: pass
     return "WiFi"
-
-def get_all_network_interfaces():
-    interfaces = []
-    try:
-        res = subprocess.run('netsh interface show interface', shell=True, capture_output=True, text=True)
-        if res.returncode == 0:
-            for line in res.stdout.splitlines():
-                parts = line.split()
-                if len(parts) >= 4 and parts[0] in ['Enabled', 'Disabled', 'Aktiviert', 'Deaktiviert']:
-                    # Interface name is usually the last part
-                    interface_name = ' '.join(parts[3:])
-                    if interface_name and interface_name not in interfaces:
-                        interfaces.append(interface_name)
-    except: pass
-    
-    if not interfaces:
-        interfaces = [detect_wifi_interface()]
-    
-    return interfaces
 
 def get_current_wifi_profile():
     try:
@@ -251,109 +229,67 @@ def run_complex_macro():
     update_overlay()
     
     c = state["config"]
+    mode = c.get("macro_disconnect_mode", "Before Click Start")
     
-    # Optimized timing constants
-    CLICK_PERIOD = 0.0437  # 22.88 CPS
-    HOLD_TIME = 0.03
-    PHASE2_DURATION = 1.85
-    BRACKET_OFFSET = 1.61
-    PHASE1_TOTAL = 2.01
-    
-    hold_start = 0.0
-    hold_len = 0.9
-    bracket_offset = float(c.get("macro_bracket_offset", BRACKET_OFFSET))
-    bracket_hold = float(c.get("macro_bracket_hold", 0.004))
-    spam_len = float(c.get("macro_spam_len", PHASE2_DURATION))
-    click_hold = float(c.get("macro_click_hold", HOLD_TIME))
+    hold_start = float(c.get("macro_hold_start", 0))
+    hold_len   = float(c.get("macro_hold_len", 2.0))
+    net_start  = float(c.get("macro_net_start", 1.5))
+    net_len    = float(c.get("macro_net_len", 4.0))
+    spam_start = float(c.get("macro_spam_start", 2.2))
+    spam_len   = float(c.get("macro_spam_len", 3.0))
+    cps        = int(c.get("click_cps", 10))
 
-    # Phase 1: Initial Hold + Bracket Press
-    def task_phase1():
-        phase1_start = time.perf_counter()
+    # Task: Hold Click
+    def task_hold():
+        if hold_len <= 0: return
         
+        # In timeline mode, we respect the user's start times.
+        # But if "Before Click Start" is selected, we might want to ensure connection is cut.
+        # However, for pure flexibility, we just follow the timeline values entered.
+        
+        time.sleep(hold_start)
+        print(">> HOLD: DOWN")
         extra = ctypes.c_ulong(0); ii_ = Input_I()
         ii_.mi = MouseInput(0, 0, 0, 0x0002, 0, ctypes.pointer(extra))
         SendInput(1, ctypes.pointer(Input(ctypes.c_ulong(0), ii_)), ctypes.sizeof(Input))
-        
-        # Wait 0.9s
-        while time.perf_counter() < phase1_start + 0.9:
-            time.sleep(0.001)
-        
+        time.sleep(hold_len)
+        print(">> HOLD: RELEASE")
         ii_.mi = MouseInput(0, 0, 0, 0x0004, 0, ctypes.pointer(extra))
         SendInput(1, ctypes.pointer(Input(ctypes.c_ulong(0), ii_)), ctypes.sizeof(Input))
-        
-        # Wait 0.05s more
-        while time.perf_counter() < phase1_start + 0.95:
-            time.sleep(0.001)
-        
-        # Bracket key (simulated with keyboard module would be better, but keeping it simple)
-        # User should press [ manually or we use keyboard library
-        
-        # Wait until ~1s passed
-        while time.perf_counter() < phase1_start + 1.0:
-            time.sleep(0.001)
-    
-    # Phase 2: Fast Clicks + Bracket Spam
-    def task_phase2():
-        p2_start = time.perf_counter()
-        p2_end = p2_start + PHASE2_DURATION
-        bracket_time = p2_start + bracket_offset
-        
-        bracket_done = False
-        next_click_time = p2_start
-        
-        extra = ctypes.c_ulong(0)
-        
-        while True:
-            now = time.perf_counter()
-            
-            if now >= p2_end:
-                break
-            
-            # Bracket spam at right moment
-            if not bracket_done and now >= bracket_time:
-                # Simulate 4 quick bracket presses
-                # In real implementation, use keyboard library
-                bracket_done = True
-            
-            # Fast clicks
-            if now >= next_click_time:
-                # Resync if too far behind
-                if now - next_click_time > CLICK_PERIOD * 2:
-                    next_click_time = now
-                
-                # Mouse press
-                ii_ = Input_I()
-                ii_.mi = MouseInput(0, 0, 0, 0x0002, 0, ctypes.pointer(extra))
-                SendInput(1, ctypes.pointer(Input(ctypes.c_ulong(0), ii_)), ctypes.sizeof(Input))
-                
-                # Hold for HOLD_TIME
-                hold_until = time.perf_counter() + click_hold
-                while time.perf_counter() < hold_until:
-                    time.sleep(0.001)
-                
-                # Mouse release
-                ii_.mi = MouseInput(0, 0, 0, 0x0004, 0, ctypes.pointer(extra))
-                SendInput(1, ctypes.pointer(Input(ctypes.c_ulong(0), ii_)), ctypes.sizeof(Input))
-                
-                next_click_time += CLICK_PERIOD
-            else:
-                # Wait for next event
-                next_event = min(next_click_time, p2_end)
-                if not bracket_done:
-                    next_event = min(next_event, bracket_time)
-                
-                remaining = next_event - time.perf_counter()
-                if remaining > 0:
-                    time.sleep(min(0.005, remaining))
 
-    # Execute - Run sequentially like original
-    print(">> MACRO: Starting")
-    task_phase1()
-    task_phase2()
+    # Task: Network
+    def task_net():
+        if net_len <= 0: return
+        time.sleep(net_start)
+        disconnect_net()
+        time.sleep(net_len)
+        reconnect_net()
+
+    # Task: Spam
+    def task_spam():
+        if spam_len <= 0: return
+        time.sleep(spam_start)
+        print(">> SPAM: START")
+        end_t = time.time() + spam_len
+        interval = 1.0 / cps
+        while time.time() < end_t:
+            click_mouse_fast()
+            time.sleep(max(0, interval - 0.03))
+        print(">> SPAM: END")
+
+    # Execute
+    t1 = threading.Thread(target=task_hold)
+    t2 = threading.Thread(target=task_net)
+    t3 = threading.Thread(target=task_spam)
+    t1.start(); t2.start(); t3.start()
     
-    state["is_running_macro"] = False
-    print(">> MACRO: Complete")
-    update_overlay()
+    # Waiter
+    def waiter():
+        t1.join(); t2.join(); t3.join()
+        state["is_running_macro"] = False
+        print(">> MACRO: FINISHED")
+        update_overlay()
+    threading.Thread(target=waiter).start()
 
 def parse_key_string(k_str):
     if k_str.startswith("Key."):
@@ -432,19 +368,16 @@ class App(tk.Tk):
         self.cb_net_method = ttk.Combobox(self.frame, values=["netsh", "Clumsy"], font=THEME["font_mono"])
         self.cb_net_method.set(state["config"].get("network_method", "netsh"))
         self.cb_net_method.pack(fill="x", pady=2)
-        self.cb_net_method.bind("<<ComboboxSelected>>", lambda e: self.toggle_network_fields())
-        
-        # Create widgets but don't pack them yet
-        self.lbl_iface = tk.Label(self.frame, text="NETWORK INTERFACE:", bg=THEME["bg"], fg=THEME["fg"], font=THEME["font_mono"])
+        # tk.Label(self.frame, text="NETWORK INTERFACE (netsh):", bg=THEME["bg"], fg=THEME["fg"], font=THEME["font_mono"]).pack(anchor="w", pady=(10,0))
+        tk.Label(self.frame, text="NETWORK INTERFACE:", bg=THEME["bg"], fg=THEME["fg"], font=THEME["font_mono"]).pack(anchor="w")
         self.e_iface = tk.Entry(self.frame, bg="#222", fg="white", font=THEME["font_mono"])
         self.e_iface.insert(0, str(state["config"].get("net_interface", "WiFi")))
+        self.e_iface.pack(fill="x", pady=2)
 
-        self.lbl_clumsy_key = tk.Label(self.frame, text="CLUMSY HOTKEY:", bg=THEME["bg"], fg=THEME["fg"], font=THEME["font_mono"])
+        tk.Label(self.frame, text="CLUMSY HOTKEY:", bg=THEME["bg"], fg=THEME["fg"], font=THEME["font_mono"]).pack(anchor="w", pady=(10,0))
         self.e_clumsy_key = tk.Entry(self.frame, bg="#222", fg="white", font=THEME["font_mono"])
         self.e_clumsy_key.insert(0, str(state["config"].get("clumsy_hotkey", "[")))
-        
-        # Show the correct fields based on method
-        self.toggle_network_fields()
+        self.e_clumsy_key.pack(fill="x", pady=2)
 
         tk.Label(self.frame, text="TRIGGER KEY:", bg=THEME["bg"], fg=THEME["fg"], font=THEME["font_mono"]).pack(anchor="w", pady=(10,0))
         self.cb_trig = ttk.Combobox(self.frame, values=keys, font=THEME["font_mono"]); self.cb_trig.set(state["config"]["key_macro_trigger"]); self.cb_trig.pack(fill="x", pady=2)
@@ -475,22 +408,6 @@ class App(tk.Tk):
         HackerButton(f_btn, text="SAVE SETTINGS", command=self.save).pack(fill="x", pady=2)
         self.btn_ov = HackerButton(f_btn, text="DISABLE OVERLAY", command=self.toggle_ov); self.btn_ov.pack(fill="x", pady=2)
         HackerButton(f_btn, text="RELOAD TOOL", command=lambda: os.execv(sys.executable, [sys.executable] + sys.argv), bg="#330000").pack(fill="x", pady=2)
-
-    def toggle_network_fields(self):
-        method = self.cb_net_method.get()
-        
-        # Hide both first
-        self.lbl_iface.pack_forget()
-        self.e_iface.pack_forget()
-        self.lbl_clumsy_key.pack_forget()
-        self.e_clumsy_key.pack_forget()
-        
-        if method == "Clumsy":
-            self.lbl_clumsy_key.pack(anchor="w", pady=(10,0), after=self.cb_net_method)
-            self.e_clumsy_key.pack(fill="x", pady=2, after=self.lbl_clumsy_key)
-        else:
-            self.lbl_iface.pack(anchor="w", pady=(10,0), after=self.cb_net_method)
-            self.e_iface.pack(fill="x", pady=2, after=self.lbl_iface)
 
     def save(self):
         c = state["config"]
