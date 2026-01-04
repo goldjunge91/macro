@@ -17,6 +17,10 @@ def check_dependencies():
         import pynput
     except ImportError:
         missing.append("pynput")
+    try:
+        import psutil
+    except ImportError:
+        missing.append("psutil")
     if missing:
         root = tk.Tk()
         root.withdraw()
@@ -30,6 +34,7 @@ def check_dependencies():
 
 check_dependencies()
 from pynput import keyboard
+import psutil
 
 # --- CONFIGURATION ---
 CONFIG_FILE = "macro_config.json"
@@ -37,6 +42,7 @@ DEFAULT_CONFIG = {
     "click_cps": 18,
     "key_macro_trigger": "Key.f3",
     "net_interface": "WiFi",
+    "net_interface_type": "WiFi",
     "network_method": "Clumsy",
     "clumsy_hotkey": "8",
     "macro_disconnect_mode": "Before Click Start",
@@ -78,7 +84,88 @@ def run_as_admin():
     return False
 
 
+def test_internet_connectivity(timeout=1):
+    """Test if internet is reachable via ping"""
+    try:
+        result = subprocess.run(
+            ["ping", "-n", "1", "-w", str(timeout * 1000), "8.8.8.8"],
+            capture_output=True,
+            timeout=timeout + 1,
+        )
+        return result.returncode == 0
+    except:
+        return False
+
+
+def detect_interface_type(interface_name):
+    """Detect if interface is WiFi or Ethernet based on name patterns"""
+    name_lower = interface_name.lower()
+    wifi_patterns = ["wi-fi", "wifi", "wlan", "wireless"]
+    ethernet_patterns = ["ethernet", "eth", "local area connection", "lan"]
+
+    for pattern in wifi_patterns:
+        if pattern in name_lower:
+            return "WiFi"
+    for pattern in ethernet_patterns:
+        if pattern in name_lower:
+            return "Ethernet"
+
+    # Additional check using netsh for WiFi
+    try:
+        res = subprocess.run(
+            f"netsh wlan show interfaces",
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        if res.returncode == 0 and interface_name in res.stdout:
+            return "WiFi"
+    except:
+        pass
+
+    return "Unknown"
+
+
+def get_active_network_interfaces():
+    """Get list of active network interfaces with internet connectivity"""
+    active_interfaces = []
+
+    try:
+        # Get all network interfaces using psutil
+        interfaces = psutil.net_if_stats()
+        addrs = psutil.net_if_addrs()
+
+        for iface_name, stats in interfaces.items():
+            # Skip interfaces that are down or loopback
+            if not stats.isup or "loopback" in iface_name.lower():
+                continue
+
+            # Check if interface has a valid IP address
+            if iface_name in addrs:
+                has_ip = any(
+                    addr.family == 2 for addr in addrs[iface_name]  # AF_INET (IPv4)
+                )
+                if has_ip:
+                    iface_type = detect_interface_type(iface_name)
+                    active_interfaces.append({"name": iface_name, "type": iface_type})
+    except Exception as e:
+        print(f"!! ERROR detecting interfaces: {e}")
+
+    # Filter to only interfaces with internet connectivity
+    connected_interfaces = []
+    if active_interfaces:
+        # Test connectivity once globally first
+        has_internet = test_internet_connectivity()
+        if has_internet:
+            # If we have internet, include all active interfaces
+            connected_interfaces = active_interfaces
+
+    return connected_interfaces
+
+
 def detect_wifi_interface():
+    """Legacy function for backward compatibility"""
     try:
         res = subprocess.run(
             "netsh wlan show interfaces", shell=True, capture_output=True, text=True
@@ -202,25 +289,58 @@ def disconnect_net():
         success = send_clumsy_hotkey(hotkey)
         if success:
             print(">> CLUMSY: Toggle-Signal send (should now be active)")
-            time.sleep(0.15)  # Kurze Pause um sicherzustellen dass Clumsy aktiv ist
+            time.sleep(0.15)
             return
 
     else:
         state["is_lagging"] = True
         iface = state["config"]["net_interface"]
-        profile = get_current_wifi_profile()
-        if profile:
-            state["wifi_profile"] = profile
+        iface_type = state["config"].get("net_interface_type", "Unknown")
 
-        print(f">> KILLING NETWORK: {iface}")
-        res = subprocess.run(
-            f'netsh wlan disconnect interface="{iface}"',
-            shell=True,
-            capture_output=True,
-            text=True,
-        )
-        if res.returncode != 0:
-            print(f"!! ERROR: {res.stderr.strip() or res.stdout.strip()}")
+        if iface_type == "WiFi":
+            # Store WiFi profile for reconnection
+            profile = get_current_wifi_profile()
+            if profile:
+                state["wifi_profile"] = profile
+
+            print(f">> DISCONNECTING WiFi: {iface}")
+            res = subprocess.run(
+                f'netsh wlan disconnect interface="{iface}"',
+                shell=True,
+                capture_output=True,
+                text=True,
+            )
+            if res.returncode != 0:
+                print(f"!! ERROR: {res.stderr.strip() or res.stdout.strip()}")
+
+        elif iface_type == "Ethernet":
+            print(f">> DISABLING Ethernet: {iface}")
+            res = subprocess.run(
+                f'netsh interface set interface "{iface}" disable',
+                shell=True,
+                capture_output=True,
+                text=True,
+            )
+            if res.returncode != 0:
+                print(f"!! ERROR: {res.stderr.strip() or res.stdout.strip()}")
+
+        else:
+            # Unknown type, try WiFi first, then Ethernet
+            print(f">> DISCONNECTING Unknown interface: {iface}")
+            res = subprocess.run(
+                f'netsh wlan disconnect interface="{iface}"',
+                shell=True,
+                capture_output=True,
+                text=True,
+            )
+            if res.returncode != 0:
+                # Try Ethernet method
+                subprocess.run(
+                    f'netsh interface set interface "{iface}" disable',
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                )
 
     update_overlay()
 
@@ -235,7 +355,7 @@ def reconnect_net():
     if method == "Clumsy":
         hotkey = state["config"].get("clumsy_hotkey", "[")
         print(f">> DEACTIVATING CLUMSY (Hotkey: {hotkey})")
-        time.sleep(0.1)  # Kurze Pause vor dem Deaktivieren
+        time.sleep(0.1)
         success = send_clumsy_hotkey(hotkey)
         state["is_lagging"] = False
         update_overlay()
@@ -246,15 +366,34 @@ def reconnect_net():
     else:
         state["is_lagging"] = False
         iface = state["config"]["net_interface"]
-        prof = state["wifi_profile"]
+        iface_type = state["config"].get("net_interface_type", "Unknown")
 
-        print(">> RESTORING NETWORK...")
-        cmd = (
-            f'netsh wlan connect interface="{iface}" name="{prof}"'
-            if prof
-            else f'netsh wlan connect interface="{iface}"'
-        )
-        subprocess.Popen(cmd, shell=True)
+        if iface_type == "WiFi":
+            prof = state["wifi_profile"]
+            print(f">> RECONNECTING WiFi: {iface}")
+            cmd = (
+                f'netsh wlan connect interface="{iface}" name="{prof}"'
+                if prof
+                else f'netsh wlan connect interface="{iface}"'
+            )
+            subprocess.Popen(cmd, shell=True)
+
+        elif iface_type == "Ethernet":
+            print(f">> RE-ENABLING Ethernet: {iface}")
+            subprocess.Popen(
+                f'netsh interface set interface "{iface}" enable', shell=True
+            )
+
+        else:
+            # Unknown type, try WiFi first
+            prof = state.get("wifi_profile")
+            print(f">> RECONNECTING Unknown interface: {iface}")
+            cmd = (
+                f'netsh wlan connect interface="{iface}" name="{prof}"'
+                if prof
+                else f'netsh interface set interface "{iface}" enable'
+            )
+            subprocess.Popen(cmd, shell=True)
 
     update_overlay()
 
@@ -573,7 +712,7 @@ class App(tk.Tk):
         )
         self.cb_net_method.set(state["config"].get("network_method", "netsh"))
         self.cb_net_method.pack(fill="x", pady=2)
-        # tk.Label(self.frame, text="NETWORK INTERFACE (netsh):", bg=THEME["bg"], fg=THEME["fg"], font=THEME["font_mono"]).pack(anchor="w", pady=(10,0))
+
         tk.Label(
             self.frame,
             text="NETWORK INTERFACE:",
@@ -581,11 +720,47 @@ class App(tk.Tk):
             fg=THEME["fg"],
             font=THEME["font_mono"],
         ).pack(anchor="w")
-        self.e_iface = tk.Entry(
-            self.frame, bg="#222", fg="white", font=THEME["font_mono"]
+
+        # Detect active interfaces
+        active_interfaces = get_active_network_interfaces()
+        interface_values = []
+        for iface in active_interfaces:
+            interface_values.append(f"{iface['name']} ({iface['type']})")
+
+        if not interface_values:
+            interface_values = ["No active interfaces detected"]
+
+        self.cb_iface = ttk.Combobox(
+            self.frame,
+            values=interface_values,
+            font=THEME["font_mono"],
+            state="readonly",
         )
-        self.e_iface.insert(0, str(state["config"].get("net_interface", "WiFi")))
-        self.e_iface.pack(fill="x", pady=2)
+
+        # Set current value or default
+        current_iface = state["config"].get("net_interface", "")
+        current_type = state["config"].get("net_interface_type", "Unknown")
+        current_display = f"{current_iface} ({current_type})"
+
+        if current_display in interface_values:
+            self.cb_iface.set(current_display)
+        elif (
+            interface_values and interface_values[0] != "No active interfaces detected"
+        ):
+            self.cb_iface.set(interface_values[0])
+        elif current_iface:
+            # Fallback to stored value even if not detected
+            self.cb_iface.set(current_display)
+
+        self.cb_iface.pack(fill="x", pady=2)
+
+        # Add refresh button
+        HackerButton(
+            self.frame,
+            text="REFRESH INTERFACES",
+            command=self.refresh_interfaces,
+            bg="#003333",
+        ).pack(fill="x", pady=2)
 
         tk.Label(
             self.frame,
@@ -687,9 +862,21 @@ class App(tk.Tk):
         c["key_macro_trigger"] = self.cb_trig.get()
         c["macro_disconnect_mode"] = self.cb_disc_mode.get()
         c["click_cps"] = self.s_cps.get()
-        c["net_interface"] = self.e_iface.get()
         c["network_method"] = self.cb_net_method.get()
         c["clumsy_hotkey"] = self.e_clumsy_key.get()
+
+        # Parse interface selection from dropdown
+        iface_selection = self.cb_iface.get()
+        if iface_selection and iface_selection != "No active interfaces detected":
+            # Extract interface name and type from "Name (Type)" format
+            match = re.match(r"^(.+?)\s*\((.+?)\)$", iface_selection)
+            if match:
+                c["net_interface"] = match.group(1).strip()
+                c["net_interface_type"] = match.group(2).strip()
+            else:
+                c["net_interface"] = iface_selection
+                c["net_interface_type"] = "Unknown"
+
         try:
             c["macro_hold_start"] = float(self.e_h_st.get())
             c["macro_hold_len"] = float(self.e_h_ln.get())
@@ -701,6 +888,24 @@ class App(tk.Tk):
             pass
         save_config()
         messagebox.showinfo("Saved", "Settings Updated!")
+
+    def refresh_interfaces(self):
+        """Refresh the list of active network interfaces"""
+        active_interfaces = get_active_network_interfaces()
+        interface_values = []
+        for iface in active_interfaces:
+            interface_values.append(f"{iface['name']} ({iface['type']})")
+
+        if not interface_values:
+            interface_values = ["No active interfaces detected"]
+
+        self.cb_iface["values"] = interface_values
+        if interface_values and interface_values[0] != "No active interfaces detected":
+            self.cb_iface.set(interface_values[0])
+
+        messagebox.showinfo(
+            "Refresh", f"Found {len(active_interfaces)} active interface(s)"
+        )
 
     def toggle_macro(self):
         state["config"]["macro_enabled"] = not state["config"].get(
