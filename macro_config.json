@@ -1,6 +1,6 @@
 {
     "click_cps": 18,
-    "key_macro_trigger": "Key.f1",
+    "key_macro_trigger": "Key.f3",
     "net_interface": "WLAN",
     "net_interface_type": "WiFi",
     "network_method": "Clumsy",
@@ -16,7 +16,7 @@
     "overlay_enabled": true,
     "overlay_x": 23,
     "overlay_y": 35,
-    "key_throw_trigger": "Key.f3",
+    "key_throw_trigger": "Key.f4",
     "throw_e_dwell": 0.03,
     "throw_after_e_before_tab_delay": 0.05,
     "throw_tab_dwell": 0.03,
