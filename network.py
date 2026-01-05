@@ -5,6 +5,7 @@ import re
 import psutil
 import time
 
+
 def is_admin():
     try:
         return ctypes.windll.shell32.IsUserAnAdmin()
@@ -100,9 +101,7 @@ def get_active_network_interfaces():
                 continue
 
             if iface_name in addrs:
-                has_ip = any(
-                    addr.family == 2 for addr in addrs[iface_name]
-                )
+                has_ip = any(addr.family == 2 for addr in addrs[iface_name])
                 if has_ip:
                     iface_type = detect_interface_type(iface_name)
                     active_interfaces.append({"name": iface_name, "type": iface_type})
@@ -165,7 +164,7 @@ def get_current_wifi_profile():
 def send_clumsy_hotkey(key_char):
     """Send a keyboard key press to trigger Clumsy"""
     from input_control import Input, Input_I, KeyBdInput, SendInput
-    
+
     try:
         VkKeyScan = ctypes.windll.user32.VkKeyScanA
         result = VkKeyScan(ord(key_char))
@@ -201,9 +200,7 @@ def send_clumsy_hotkey(key_char):
 
         if shift_state & 1:
             time.sleep(0.02)
-            ii_.ki = KeyBdInput(
-                0x10, 0, 0x0002, 0, ctypes.pointer(extra)
-            )
+            ii_.ki = KeyBdInput(0x10, 0, 0x0002, 0, ctypes.pointer(extra))
             SendInput(
                 1, ctypes.pointer(Input(ctypes.c_ulong(1), ii_)), ctypes.sizeof(Input)
             )

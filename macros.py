@@ -2,7 +2,15 @@ import time
 import threading
 import ctypes
 from pynput import keyboard
-from input_control import Input_I, MouseInput, Input, SendInput, click_mouse_fast, keyboard_controller, mouse
+from input_control import (
+    Input_I,
+    MouseInput,
+    Input,
+    SendInput,
+    click_mouse_fast,
+    keyboard_controller,
+    mouse,
+)
 from pynput.mouse import Button
 
 
@@ -29,6 +37,7 @@ def run_throw_macro(state):
     clumsy_thread.join()
 
     from input_control import tap_tab
+
     tap_tab(0.02)
     time.sleep(0.08)
     mouse.release(Button.left)

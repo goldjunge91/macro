@@ -105,7 +105,7 @@ class App(tk.Tk):
         self.state = state
         self.save_config_func = save_config
         self.get_active_network_interfaces = get_active_network_interfaces
-        
+
         self.title("MACRO CONTROLLER")
         self.geometry("300x950")
         self.configure(bg=THEME["bg"])
@@ -513,7 +513,9 @@ class App(tk.Tk):
         self.save_config_func()
 
     def toggle_ov(self):
-        self.state["config"]["overlay_enabled"] = not self.state["config"]["overlay_enabled"]
+        self.state["config"]["overlay_enabled"] = not self.state["config"][
+            "overlay_enabled"
+        ]
         self.btn_ov.config(
             text=(
                 "DISABLE OVERLAY"

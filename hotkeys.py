@@ -9,7 +9,16 @@ def parse_key_string(k_str):
     return k_str
 
 
-def on_key_press(key, state, run_complex_macro, run_throw_macro, start_recording, stop_recording, playback_recording, record_action):
+def on_key_press(
+    key,
+    state,
+    run_complex_macro,
+    run_throw_macro,
+    start_recording,
+    stop_recording,
+    playback_recording,
+    record_action,
+):
     try:
         if state["is_recording"]:
             record_action("key_press", key=key)
@@ -69,6 +78,7 @@ def on_mouse_click(x, y, button, pressed, state, record_action):
 
 def on_mouse_move(x, y, state, record_action):
     import time
+
     try:
         if state["is_recording"]:
             current_time = time.time()
