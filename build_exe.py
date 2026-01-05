@@ -39,7 +39,7 @@ def validate_prerequisites():
         try:
             with open(config_path) as f:
                 json.load(f)
-            print(f"✓ Config-Datei validiert")
+            print("✓ Config-Datei validiert")
         except json.JSONDecodeError as e:
             print(f"✗ Config-Datei ist ungültiges JSON: {e}")
             return False

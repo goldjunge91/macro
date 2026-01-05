@@ -10,7 +10,7 @@ The tool now supports both WiFi and Ethernet connections with automatic detectio
 - **Auto-Detection**: Scans for active network interfaces with internet connectivity using psutil
 - **Interface Type Recognition**: Automatically identifies WiFi vs Ethernet interfaces
 - **Dropdown Selection**: Choose from detected active interfaces in the UI
-- **Smart Disconnect/Reconnect**: 
+- **Smart Disconnect/Reconnect**:
   - WiFi: Uses `netsh wlan disconnect` and reconnects to saved SSID
   - Ethernet: Uses `netsh interface disable/enable`
 - **Refresh Button**: Manually refresh the list of available interfaces
@@ -37,6 +37,7 @@ Once that's consistent, fine-tune slightly until duplicates appear (two Scanners
 Success rate is ~90% with perfect timings—always test 2-3 runs per adjustment, as results can vary slightly.
 
 Requirements
+
 - Python 3.7+
 - pynput (auto-installed)
 - psutil (auto-installed)
