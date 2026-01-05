@@ -166,12 +166,18 @@ def get_active_network_interfaces():
 
 def auto_detect_interface():
     """Auto-detect and return the first active network interface"""
-    active_interfaces = get_active_network_interfaces()
-    if active_interfaces:
-        return active_interfaces[0]["name"], active_interfaces[0]["type"]
-    else:
-        # Fallback to WiFi if no interfaces detected
-        return "WiFi", "WiFi"
+    try:
+        active_interfaces = get_active_network_interfaces()
+        if active_interfaces and len(active_interfaces) > 0:
+            # Validate that the interface has the expected keys
+            first_interface = active_interfaces[0]
+            if isinstance(first_interface, dict) and "name" in first_interface and "type" in first_interface:
+                return first_interface["name"], first_interface["type"]
+    except Exception as e:
+        print(f"!! ERROR in auto_detect_interface: {e}")
+    
+    # Fallback to WiFi if no interfaces detected or error occurred
+    return "WiFi", "WiFi"
 
 
 def get_current_wifi_profile():
