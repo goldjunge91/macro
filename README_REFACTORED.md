@@ -5,9 +5,11 @@ This project has been refactored from a single `macro.py` file into multiple org
 ## File Structure
 
 ### Main Entry Point
+
 - **main.py** - Application entry point with dependency checking and initialization
 
 ### Core Modules
+
 - **config.py** - Configuration management (loading/saving settings and state)
 - **network.py** - Network operations (disconnect/reconnect, interface detection, admin checks)
 - **input_control.py** - Low-level keyboard and mouse control using ctypes and pynput
@@ -25,6 +27,7 @@ python main.py
 ```
 
 This will:
+
 1. Check for required dependencies (pynput, psutil)
 2. Request admin privileges (required for network operations)
 3. Load configuration and recordings
@@ -33,7 +36,7 @@ This will:
 
 ## Module Dependencies
 
-```
+```txt
 main.py
 ├── config.py (state management)
 ├── network.py
@@ -63,6 +66,7 @@ main.py
 ## Configuration
 
 Settings are stored in `macro_config.json` and include:
+
 - Hotkey bindings
 - Network interface selection
 - Macro timing parameters

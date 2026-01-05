@@ -1,4 +1,5 @@
-ARC Raiders Snitch Scanner Duplication Macro
+# ARC Raider Macro tool
+
 A simple macro/tool for duplicating Snitch Scanners in ARC Raiders using a network lag simulation technique (disconnect/reconnect timing to interrupt the throw action).
 How It Works
 This exploits a desync glitch by briefly simulating network issues during the throw animation, causing the server to register the animation but not the item drop—resulting in a duplicate spawning on the ground.
