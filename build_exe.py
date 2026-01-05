@@ -19,7 +19,7 @@ def main():
     # Installiere PyInstaller und Abhängigkeiten
     print("Installiere PyInstaller und pynput...")
     subprocess.check_call(
-        [venv_python, "-m", "pip", "install", "pyinstaller", "pynput"]
+        [venv_python, "-m", "pip", "install", "pyinstaller", "pynput", "psutil"]
     )
 
     # Schritt 2-3: PyInstaller ausführen mit Optionen
@@ -38,6 +38,8 @@ def main():
         "pynput.keyboard",
         "--hidden-import",
         "pynput.mouse",
+        "--hidden-import",
+        "psutil",
     ]
 
     # Füge macro_config.json als Daten hinzu, falls vorhanden
