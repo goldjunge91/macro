@@ -84,11 +84,38 @@ def run_as_admin():
     return False
 
 
+def sanitize_interface_name(name):
+    """
+    Sanitize interface or profile name to prevent command injection.
+    Only allows alphanumeric characters, spaces, hyphens, underscores, dots, and parentheses.
+    Returns the sanitized name or raises ValueError if the name is invalid.
+    """
+    if not name or not isinstance(name, str):
+        raise ValueError("Interface name must be a non-empty string")
+    
+    # Allow only safe characters: alphanumeric, space, hyphen, underscore, dot, and parentheses
+    # This covers most legitimate Windows interface names while preventing injection
+    allowed_pattern = re.compile(r'^[a-zA-Z0-9\s\-_.()]+$')
+    
+    if not allowed_pattern.match(name):
+        raise ValueError(f"Interface name contains invalid characters: {name}")
+    
+    return name
+
+
 def test_internet_connectivity(timeout=1):
     """Test if internet is reachable via ping"""
     try:
+        cmd = ["ping", "-n", "1", "-w", str(timeout * 1000)]
+        
+        # If interface IP is provided, bind to that source address
+        if interface_ip:
+            cmd.extend(["-S", interface_ip])
+        
+        cmd.append("8.8.8.8")
+        
         result = subprocess.run(
-            ["ping", "-n", "1", "-w", str(timeout * 1000), "8.8.8.8"],
+            cmd,
             capture_output=True,
             timeout=timeout + 1,
         )
@@ -129,6 +156,7 @@ def detect_interface_type(interface_name):
 def get_active_network_interfaces():
     """Get list of active network interfaces with internet connectivity"""
     active_interfaces = []
+    addrs = {}  # Initialize outside try block
 
     try:
         # Get all network interfaces using psutil
@@ -153,18 +181,24 @@ def get_active_network_interfaces():
 
     # Filter to only interfaces with internet connectivity
     connected_interfaces = []
-    if active_interfaces:
-        # Test connectivity once globally first
-        has_internet = test_internet_connectivity()
-        if has_internet:
-            # If we have internet, include all active interfaces
-            connected_interfaces = active_interfaces
+    for iface in active_interfaces:
+        # Get the IPv4 address for this interface
+        if iface["name"] in addrs:
+            ipv4_addr = None
+            for addr in addrs[iface["name"]]:
+                if addr.family == 2:  # AF_INET (IPv4)
+                    ipv4_addr = addr.address
+                    break
+            
+            # Test connectivity through this specific interface
+            if ipv4_addr and test_internet_connectivity(timeout=1, interface_ip=ipv4_addr):
+                connected_interfaces.append(iface)
 
     return connected_interfaces
 
 
-def detect_wifi_interface():
-    """Legacy function for backward compatibility"""
+def auto_detect_interface():
+    """Auto-detect and return the first active network interface"""
     try:
         res = subprocess.run(
             ["netsh", "wlan", "show", "interfaces"], capture_output=True, text=True
@@ -205,7 +239,10 @@ def load_config():
             pass
 
     if state["config"]["net_interface"] == "Auto-Detect":
-        state["config"]["net_interface"] = detect_wifi_interface()
+        # Auto-detect: use first active interface
+        interface_name, interface_type = auto_detect_interface()
+        state["config"]["net_interface"] = interface_name
+        state["config"]["net_interface_type"] = interface_type
 
 
 def save_config():
@@ -295,6 +332,14 @@ def disconnect_net():
         state["is_lagging"] = True
         iface = state["config"]["net_interface"]
         iface_type = state["config"].get("net_interface_type", "Unknown")
+        
+        # Sanitize the interface name to prevent command injection
+        try:
+            iface = sanitize_interface_name(iface)
+        except ValueError as e:
+            print(f"!! ERROR: Invalid interface name: {e}")
+            state["is_lagging"] = False
+            return
 
         if iface_type == "WiFi":
             # Store WiFi profile for reconnection
@@ -362,9 +407,16 @@ def reconnect_net():
         state["is_lagging"] = False
         iface = state["config"]["net_interface"]
         iface_type = state["config"].get("net_interface_type", "Unknown")
+        
+        # Sanitize the interface name to prevent command injection
+        try:
+            iface = sanitize_interface_name(iface)
+        except ValueError as e:
+            print(f"!! ERROR: Invalid interface name: {e}")
+            return
 
         if iface_type == "WiFi":
-            prof = state["wifi_profile"]
+            prof = state.get("wifi_profile")
             print(f">> RECONNECTING WiFi: {iface}")
             if prof:
                 subprocess.Popen(
@@ -977,7 +1029,10 @@ if __name__ == "__main__":
         sys.exit(0)
     load_config()  # Load before interface detection to see if we have a saved name
     if state["config"]["net_interface"] == "Auto-Detect":
-        state["config"]["net_interface"] = detect_wifi_interface()
+        # Auto-detect: use first active interface
+        interface_name, interface_type = auto_detect_interface()
+        state["config"]["net_interface"] = interface_name
+        state["config"]["net_interface_type"] = interface_type
 
     keyboard.Listener(on_press=on_key_press).start()
     App().mainloop()
