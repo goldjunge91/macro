@@ -943,6 +943,8 @@ class App(tk.Tk):
     
     def on_method_change(self, event=None):
         """Handle network method change"""
+        state["config"]["network_method"] = self.cb_net_method.get()
+        save_config()
         self.update_method_display()
 
     def toggle_macro(self):
