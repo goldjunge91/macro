@@ -84,11 +84,38 @@ def run_as_admin():
     return False
 
 
+def sanitize_interface_name(name):
+    """
+    Sanitize interface or profile name to prevent command injection.
+    Only allows alphanumeric characters, spaces, hyphens, underscores, dots, and parentheses.
+    Returns the sanitized name or raises ValueError if the name is invalid.
+    """
+    if not name or not isinstance(name, str):
+        raise ValueError("Interface name must be a non-empty string")
+    
+    # Allow only safe characters: alphanumeric, space, hyphen, underscore, dot, and parentheses
+    # This covers most legitimate Windows interface names while preventing injection
+    allowed_pattern = re.compile(r'^[a-zA-Z0-9\s\-_.()]+$')
+    
+    if not allowed_pattern.match(name):
+        raise ValueError(f"Interface name contains invalid characters: {name}")
+    
+    return name
+
+
 def test_internet_connectivity(timeout=1):
     """Test if internet is reachable via ping"""
     try:
+        cmd = ["ping", "-n", "1", "-w", str(timeout * 1000)]
+        
+        # If interface IP is provided, bind to that source address
+        if interface_ip:
+            cmd.extend(["-S", interface_ip])
+        
+        cmd.append("8.8.8.8")
+        
         result = subprocess.run(
-            ["ping", "-n", "1", "-w", str(timeout * 1000), "8.8.8.8"],
+            cmd,
             capture_output=True,
             timeout=timeout + 1,
         )
@@ -113,8 +140,7 @@ def detect_interface_type(interface_name):
     # Additional check using netsh for WiFi
     try:
         res = subprocess.run(
-            f"netsh wlan show interfaces",
-            shell=True,
+            ["netsh", "wlan", "show", "interfaces"],
             capture_output=True,
             text=True,
             timeout=2,
@@ -130,6 +156,7 @@ def detect_interface_type(interface_name):
 def get_active_network_interfaces():
     """Get list of active network interfaces with internet connectivity"""
     active_interfaces = []
+    addrs = {}  # Initialize outside try block
 
     try:
         # Get all network interfaces using psutil
@@ -154,12 +181,18 @@ def get_active_network_interfaces():
 
     # Filter to only interfaces with internet connectivity
     connected_interfaces = []
-    if active_interfaces:
-        # Test connectivity once globally first
-        has_internet = test_internet_connectivity()
-        if has_internet:
-            # If we have internet, include all active interfaces
-            connected_interfaces = active_interfaces
+    for iface in active_interfaces:
+        # Get the IPv4 address for this interface
+        if iface["name"] in addrs:
+            ipv4_addr = None
+            for addr in addrs[iface["name"]]:
+                if addr.family == 2:  # AF_INET (IPv4)
+                    ipv4_addr = addr.address
+                    break
+            
+            # Test connectivity through this specific interface
+            if ipv4_addr and test_internet_connectivity(timeout=1, interface_ip=ipv4_addr):
+                connected_interfaces.append(iface)
 
     return connected_interfaces
 
@@ -183,7 +216,9 @@ def auto_detect_interface():
 def get_current_wifi_profile():
     try:
         res = subprocess.run(
-            "netsh wlan show interfaces", shell=True, capture_output=True, text=True
+            ["netsh", "wlan", "show", "interfaces"],
+            capture_output=True,
+            text=True
         )
         if res.returncode == 0:
             match = re.search(
@@ -300,6 +335,14 @@ def disconnect_net():
         state["is_lagging"] = True
         iface = state["config"]["net_interface"]
         iface_type = state["config"].get("net_interface_type", "Unknown")
+        
+        # Sanitize the interface name to prevent command injection
+        try:
+            iface = sanitize_interface_name(iface)
+        except ValueError as e:
+            print(f"!! ERROR: Invalid interface name: {e}")
+            state["is_lagging"] = False
+            return
 
         if iface_type == "WiFi":
             # Store WiFi profile for reconnection
@@ -309,8 +352,7 @@ def disconnect_net():
 
             print(f">> DISCONNECTING WiFi: {iface}")
             res = subprocess.run(
-                f'netsh wlan disconnect interface="{iface}"',
-                shell=True,
+                ["netsh", "wlan", "disconnect", f"interface={iface}"],
                 capture_output=True,
                 text=True,
             )
@@ -320,8 +362,7 @@ def disconnect_net():
         elif iface_type == "Ethernet":
             print(f">> DISABLING Ethernet: {iface}")
             res = subprocess.run(
-                f'netsh interface set interface "{iface}" disable',
-                shell=True,
+                ["netsh", "interface", "set", "interface", iface, "disable"],
                 capture_output=True,
                 text=True,
             )
@@ -332,16 +373,14 @@ def disconnect_net():
             # Unknown type, try WiFi first, then Ethernet
             print(f">> DISCONNECTING Unknown interface: {iface}")
             res = subprocess.run(
-                f'netsh wlan disconnect interface="{iface}"',
-                shell=True,
+                ["netsh", "wlan", "disconnect", f"interface={iface}"],
                 capture_output=True,
                 text=True,
             )
             if res.returncode != 0:
                 # Try Ethernet method
                 subprocess.run(
-                    f'netsh interface set interface "{iface}" disable',
-                    shell=True,
+                    ["netsh", "interface", "set", "interface", iface, "disable"],
                     capture_output=True,
                     text=True,
                 )
@@ -371,33 +410,62 @@ def reconnect_net():
         state["is_lagging"] = False
         iface = state["config"]["net_interface"]
         iface_type = state["config"].get("net_interface_type", "Unknown")
+        
+        # Sanitize the interface name to prevent command injection
+        try:
+            iface = sanitize_interface_name(iface)
+        except ValueError as e:
+            print(f"!! ERROR: Invalid interface name: {e}")
+            return
 
         if iface_type == "WiFi":
-            prof = state["wifi_profile"]
+            prof = state.get("wifi_profile")
             print(f">> RECONNECTING WiFi: {iface}")
-            cmd = (
-                f'netsh wlan connect interface="{iface}" name="{prof}"'
-                if prof
-                else f'netsh wlan connect interface="{iface}"'
-            )
-            subprocess.Popen(cmd, shell=True)
+            
+            if prof:
+                # Sanitize the profile name as well
+                try:
+                    prof = sanitize_interface_name(prof)
+                    subprocess.Popen(
+                        ["netsh", "wlan", "connect", f"interface={iface}", f"name={prof}"]
+                    )
+                except ValueError as e:
+                    print(f"!! ERROR: Invalid profile name: {e}")
+                    # Fall back to connecting without profile name
+                    subprocess.Popen(
+                        ["netsh", "wlan", "connect", f"interface={iface}"]
+                    )
+            else:
+                subprocess.Popen(
+                    ["netsh", "wlan", "connect", f"interface={iface}"]
+                )
 
         elif iface_type == "Ethernet":
             print(f">> RE-ENABLING Ethernet: {iface}")
             subprocess.Popen(
-                f'netsh interface set interface "{iface}" enable', shell=True
+                ["netsh", "interface", "set", "interface", iface, "enable"]
             )
 
         else:
             # Unknown type, try WiFi first
             prof = state.get("wifi_profile")
             print(f">> RECONNECTING Unknown interface: {iface}")
-            cmd = (
-                f'netsh wlan connect interface="{iface}" name="{prof}"'
-                if prof
-                else f'netsh interface set interface "{iface}" enable'
-            )
-            subprocess.Popen(cmd, shell=True)
+            
+            if prof:
+                try:
+                    prof = sanitize_interface_name(prof)
+                    subprocess.Popen(
+                        ["netsh", "wlan", "connect", f"interface={iface}", f"name={prof}"]
+                    )
+                except ValueError:
+                    # Fall back to enabling interface
+                    subprocess.Popen(
+                        ["netsh", "interface", "set", "interface", iface, "enable"]
+                    )
+            else:
+                subprocess.Popen(
+                    ["netsh", "interface", "set", "interface", iface, "enable"]
+                )
 
     update_overlay()
 
