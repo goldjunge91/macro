@@ -9,19 +9,26 @@ import re
 import tkinter as tk
 from tkinter import ttk, messagebox
 import math
+import psutil
+import importlib.util
+from pynput import keyboard
+from pynput.keyboard import Controller as KeyboardController
+from pynput.mouse import Controller as MouseController, Button
 
 
 # --- DEPENDENCY CHECK ---
 def check_dependencies():
     missing = []
     try:
-        import pynput
-    except ImportError:
-        missing.append("pynput")
+        if not importlib.util.find_spec("pynput"):
+            missing.append("pynput")
+    except Exception:
+        pass
     try:
-        import psutil
-    except ImportError:
-        missing.append("psutil")
+        if not importlib.util.find_spec("psutil"):
+            missing.append("psutil")
+    except Exception:
+        pass
     if missing:
         root = tk.Tk()
         root.withdraw()
@@ -34,9 +41,8 @@ def check_dependencies():
 
 
 check_dependencies()
-from pynput import keyboard
-from pynput.mouse import Controller as MouseController, Button
-import psutil
+keyboard_controller = KeyboardController()
+mouse = MouseController()
 
 # --- CONFIGURATION ---
 CONFIG_FILE = "macro_config.json"
@@ -72,6 +78,10 @@ DEFAULT_CONFIG = {
     "throw_bracket_offset": 1.61,
     "throw_phase1_total": 2.01,
     "throw_enabled": True,
+    # Recording settings
+    "key_record_trigger": "Key.f5",
+    "key_playback_trigger": "Key.f6",
+    "recording_enabled": True,
 }
 
 state = {
@@ -80,16 +90,17 @@ state = {
     "wifi_profile": None,
     "overlay_ref": None,
     "config": DEFAULT_CONFIG.copy(),
+    "is_recording": False,
+    "recorded_actions": [],
+    "recording_start_time": None,
 }
-
-mouse = MouseController()
 
 
 # --- SYSTEM FUNCTIONS ---
 def is_admin():
     try:
         return ctypes.windll.shell32.IsUserAnAdmin()
-    except:
+    except Exception:
         return False
 
 
@@ -138,7 +149,7 @@ def test_internet_connectivity(timeout=1, interface_ip=None):
             timeout=timeout + 1,
         )
         return result.returncode == 0
-    except:
+    except Exception:
         return False
 
 
@@ -165,7 +176,7 @@ def detect_interface_type(interface_name):
         )
         if res.returncode == 0 and interface_name in res.stdout:
             return "WiFi"
-    except:
+    except Exception:
         pass
 
     return "Unknown"
@@ -250,7 +261,7 @@ def get_current_wifi_profile():
             )
             if match:
                 return match.group(1).strip()
-    except:
+    except Exception:
         pass
     return None
 
@@ -260,7 +271,7 @@ def load_config():
         try:
             with open(CONFIG_FILE, "r") as f:
                 state["config"].update(json.load(f))
-        except:
+        except Exception:
             pass
 
     if state["config"]["net_interface"] == "Auto-Detect":
@@ -274,7 +285,7 @@ def save_config():
     try:
         with open(CONFIG_FILE, "w") as f:
             json.dump(state["config"], f, indent=4)
-    except:
+    except Exception:
         pass
 
 
@@ -558,16 +569,16 @@ def click_mouse_fast():
 # === THROW MACRO FUNCTIONS ===
 def tap_e(dwell=0.03):
     """Tap E key"""
-    keyboard.press(keyboard.KeyCode.from_char("e"))
+    keyboard_controller.press(keyboard.KeyCode.from_char("e"))
     time.sleep(dwell)
-    keyboard.release(keyboard.KeyCode.from_char("e"))
+    keyboard_controller.release(keyboard.KeyCode.from_char("e"))
 
 
 def tap_tab(dwell=0.03):
     """Tap Tab key"""
-    keyboard.press(keyboard.Key.tab)
+    keyboard_controller.press(keyboard.Key.tab)
     time.sleep(dwell)
-    keyboard.release(keyboard.Key.tab)
+    keyboard_controller.release(keyboard.Key.tab)
 
 
 def move_mouse_up_angle(distance, angle_deg=70, horizontal_dir=1, smooth_steps=30):
@@ -585,6 +596,17 @@ def move_mouse_up_angle(distance, angle_deg=70, horizontal_dir=1, smooth_steps=3
         time.sleep(0.001)
 
 
+def move_mouse_horizontal(distance, duration=0.5, steps=50):
+    """Move mouse horizontally (negative distance = left)"""
+    dx = distance
+    start_x, start_y = mouse.position
+    for i in range(steps + 1):
+        t = i / steps
+        x = start_x + dx * t
+        mouse.position = (int(x), start_y)
+        time.sleep(duration / steps)
+
+
 def double_click_left(hold_time=0.022, gap=0.055):
     """Double click left mouse button"""
     mouse.press(Button.left)
@@ -598,62 +620,149 @@ def double_click_left(hold_time=0.022, gap=0.055):
 
 def tap_bracket(dwell=0.006):
     """Tap bracket key"""
-    keyboard.press(keyboard.KeyCode.from_vk(219))  # '['
+    keyboard_controller.press(keyboard.KeyCode.from_vk(219))  # '['
     time.sleep(dwell)
-    keyboard.release(keyboard.KeyCode.from_vk(219))
-
-
-def shift_alt_click_once(shift_dwell=0.018, alt_dwell=0.006):
-    """Perform Shift+Alt+Click"""
-    keyboard.press(keyboard.Key.shift)
-    time.sleep(shift_dwell)
-    keyboard.press(keyboard.Key.alt)
-    time.sleep(alt_dwell)
-    mouse.press(Button.left)
-    time.sleep(0.02)
-    mouse.release(Button.left)
-    keyboard.release(keyboard.Key.alt)
-    keyboard.release(keyboard.Key.shift)
+    keyboard_controller.release(keyboard.KeyCode.from_vk(219))
 
 
 def run_throw_macro():
     if not state["config"].get("throw_enabled", True):
         return
     print(">> THROW MACRO: STARTING")
-    start_time = time.time()
+    start_time = time.perf_counter()
 
-    c = state["config"]
-    # Phase 1: E + Tab + Aim
-    tap_e(c.get("throw_e_dwell", 0.03))
-    time.sleep(c.get("throw_after_e_before_tab_delay", 0.05))
-    tap_tab(c.get("throw_tab_dwell", 0.03))
-    time.sleep(c.get("throw_after_tab_before_aim_delay", 0.05))
-    move_mouse_up_angle(
-        c.get("throw_aim_up_distance", 250),
-        c.get("throw_aim_angle_deg", 70),
-        c.get("throw_aim_horizontal_dir", 1),
+    # Clumsy toggle und Mouse Drag simultan starten
+    clumsy_hotkey = state["config"].get("clumsy_hotkey", "8")
+
+    # Phase 1: Clumsy toggle in separatem Thread + Mouse Drag gleichzeitig
+    def toggle_clumsy():
+        send_clumsy_hotkey(clumsy_hotkey)
+
+    clumsy_thread = threading.Thread(target=toggle_clumsy)
+    clumsy_thread.start()
+
+    # Mouse left button down und Drag simultan mit Clumsy
+    mouse.press(Button.left)
+    move_mouse_horizontal(-2000, duration=0.5, steps=50)
+
+    # Warte auf Clumsy-Thread falls noch nicht fertig
+    clumsy_thread.join()
+
+    # Phase 3: Tab Press (0.32s total: 0.3 pause + 0.02 tab + 0.08 mouse up? Wait, adjust)
+    # time.sleep(0.3)
+    tap_tab(0.02)
+    time.sleep(0.08)  # Safe mouse release
+    mouse.release(Button.left)
+
+    # Phase 4: E-Spam - bis Gesamtzeit unter 3s bleibt
+    # Rapid fire E: frequency ~45.7 Hz (period 0.0219s), dwell 0.00389s per press
+    period = 0.0219
+    dwell = 0.00389
+    max_total_time = 2.95  # Unter 3 Sekunden mit Buffer
+    end_time = start_time + max_total_time
+    while time.perf_counter() < end_time:
+        keyboard_controller.press(keyboard.KeyCode.from_vk(69))  # 'E'
+        time.sleep(dwell)
+        keyboard_controller.release(keyboard.KeyCode.from_vk(69))
+        time.sleep(period - dwell)
+
+    # Phase 5: Cleanup
+    # Clumsy toggle deaktivieren
+    send_clumsy_hotkey(clumsy_hotkey)
+
+    print(f">> THROW MACRO: COMPLETE ({time.perf_counter() - start_time:.3f}s)")
+
+
+# === RECORDING FUNCTIONS ===
+def start_recording():
+    if state["is_recording"]:
+        print(">> RECORDING: Already recording")
+        return
+
+    state["is_recording"] = True
+    state["recorded_actions"] = []
+    state["recording_start_time"] = time.perf_counter()
+    print(">> RECORDING: STARTED - Press F5 again to stop")
+    update_overlay()
+
+
+def stop_recording():
+    if not state["is_recording"]:
+        return
+
+    state["is_recording"] = False
+    total_time = time.perf_counter() - state["recording_start_time"]
+    action_count = len(state["recorded_actions"])
+    print(
+        f">> RECORDING: STOPPED - {action_count} actions recorded in {total_time:.2f}s"
     )
+    update_overlay()
 
-    # Phase 2: Double Click
-    double_click_left(
-        c.get("throw_doubleclick_hold", 0.022), c.get("throw_doubleclick_gap", 0.055)
-    )
 
-    # Phase 3: Bracket
-    elapsed = time.time() - start_time
-    bracket_offset = c.get("throw_bracket_offset", 1.61)
-    if bracket_offset > elapsed:
-        time.sleep(bracket_offset - elapsed)
-    tap_bracket()
+def record_action(action_type, **kwargs):
+    if not state["is_recording"]:
+        return
 
-    # Phase 4: Shift+Alt+Click
-    elapsed = time.time() - start_time
-    phase1_total = c.get("throw_phase1_total", 2.01)
-    if phase1_total > elapsed:
-        time.sleep(phase1_total - elapsed)
-    shift_alt_click_once()
+    timestamp = time.perf_counter() - state["recording_start_time"]
+    action = {"type": action_type, "time": timestamp, **kwargs}
+    state["recorded_actions"].append(action)
 
-    print(f">> THROW MACRO: COMPLETE ({time.time() - start_time:.3f}s)")
+
+def playback_recording():
+    if not state["config"].get("recording_enabled", True):
+        return
+
+    if state["is_recording"]:
+        print(">> PLAYBACK: Cannot playback while recording")
+        return
+
+    if not state["recorded_actions"]:
+        print(">> PLAYBACK: No recording available")
+        return
+
+    print(f">> PLAYBACK: Starting {len(state['recorded_actions'])} actions")
+    start_time = time.perf_counter()
+
+    for action in state["recorded_actions"]:
+        # Wait until the action's timestamp
+        while time.perf_counter() - start_time < action["time"]:
+            time.sleep(0.001)
+
+        action_type = action["type"]
+
+        if action_type == "key_press":
+            try:
+                key = action.get("key")
+                if isinstance(key, str):
+                    keyboard_controller.press(keyboard.KeyCode.from_char(key))
+                else:
+                    keyboard_controller.press(key)
+            except Exception as e:
+                print(f"!! ERROR in key_press: {e}")
+
+        elif action_type == "key_release":
+            try:
+                key = action.get("key")
+                if isinstance(key, str):
+                    keyboard_controller.release(keyboard.KeyCode.from_char(key))
+                else:
+                    keyboard_controller.release(key)
+            except Exception as e:
+                print(f"!! ERROR in key_release: {e}")
+
+        elif action_type == "mouse_press":
+            button = action.get("button", Button.left)
+            mouse.press(button)
+
+        elif action_type == "mouse_release":
+            button = action.get("button", Button.left)
+            mouse.release(button)
+
+        elif action_type == "mouse_move":
+            x, y = action.get("x"), action.get("y")
+            mouse.position = (x, y)
+
+    print(f">> PLAYBACK: COMPLETE ({time.perf_counter() - start_time:.3f}s)")
 
 
 # --- MACRO ENGINE ---
@@ -665,7 +774,6 @@ def run_complex_macro():
     update_overlay()
 
     c = state["config"]
-    mode = c.get("macro_disconnect_mode", "Before Click Start")
 
     hold_start = float(c.get("macro_hold_start"))
     hold_len = float(c.get("macro_hold_len"))
@@ -750,6 +858,10 @@ def parse_key_string(k_str):
 
 def on_key_press(key):
     try:
+        # Recording key press
+        if state["is_recording"]:
+            record_action("key_press", key=key)
+
         if not state["config"].get("macro_enabled", True):
             return
         target = parse_key_string(state["config"].get("key_macro_trigger", "Key.f3"))
@@ -762,7 +874,56 @@ def on_key_press(key):
         )
         if key == throw_target or (hasattr(key, "char") and key.char == throw_target):
             threading.Thread(target=run_throw_macro).start()
-    except:
+
+        # Recording toggle trigger
+        record_trigger = parse_key_string(
+            state["config"].get("key_record_trigger", "Key.f5")
+        )
+        if key == record_trigger or (
+            hasattr(key, "char") and key.char == record_trigger
+        ):
+            if state["is_recording"]:
+                stop_recording()
+            else:
+                start_recording()
+
+        # Playback trigger
+        playback_trigger = parse_key_string(
+            state["config"].get("key_playback_trigger", "Key.f6")
+        )
+        if key == playback_trigger or (
+            hasattr(key, "char") and key.char == playback_trigger
+        ):
+            threading.Thread(target=playback_recording).start()
+    except Exception:
+        pass
+
+
+def on_key_release(key):
+    try:
+        # Recording key release
+        if state["is_recording"]:
+            record_action("key_release", key=key)
+    except Exception:
+        pass
+
+
+def on_mouse_click(x, y, button, pressed):
+    try:
+        if state["is_recording"]:
+            if pressed:
+                record_action("mouse_press", button=button, x=x, y=y)
+            else:
+                record_action("mouse_release", button=button, x=x, y=y)
+    except Exception:
+        pass
+
+
+def on_mouse_move(x, y):
+    try:
+        if state["is_recording"]:
+            record_action("mouse_move", x=x, y=y)
+    except Exception:
         pass
 
 
@@ -868,19 +1029,43 @@ class App(tk.Tk):
         self.configure(bg=THEME["bg"])
         self.attributes("-topmost", True)
 
+        # Create a canvas and scrollbar for scrolling
+        self.canvas = tk.Canvas(self, bg=THEME["bg"], highlightthickness=0)
+        self.scrollbar = tk.Scrollbar(
+            self, orient="vertical", command=self.canvas.yview
+        )
+        self.scrollable_frame = tk.Frame(self.canvas, bg=THEME["bg"])
+
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")),
+        )
+
+        self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.scrollbar.pack(side="right", fill="y")
+
+        # Bind mousewheel to canvas
+        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+
         tk.Label(
-            self,
+            self.scrollable_frame,
             text="[ TIMELINE MACRO ]",
             font=THEME["font_header"],
             bg=THEME["bg"],
             fg=THEME["fg"],
         ).pack(pady=(20, 0))
 
-        self.frame = tk.Frame(self, bg=THEME["bg"])
+        self.frame = tk.Frame(self.scrollable_frame, bg=THEME["bg"])
         self.frame.pack(fill="both", expand=True, padx=20)
         self.build_ui()
         state["overlay_ref"] = Overlay(self)
         update_overlay()
+
+    def _on_mousewheel(self, event):
+        self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     def build_ui(self):
         keys = (
@@ -1071,10 +1256,6 @@ class App(tk.Tk):
         self.e_s_ln = add_entry("Duration (s):", "macro_spam_len")
 
         add_section("--- THROW MACRO SETTINGS ---")
-        self.cb_throw_trig = ttk.Combobox(
-            self.frame, values=keys, font=THEME["font_mono"]
-        )
-        self.cb_throw_trig.set(state["config"]["key_throw_trigger"])
         tk.Label(
             self.frame,
             text="THROW TRIGGER KEY:",
@@ -1082,31 +1263,58 @@ class App(tk.Tk):
             fg=THEME["fg"],
             font=THEME["font_mono"],
         ).pack(anchor="w", pady=(10, 0))
+        self.cb_throw_trig = ttk.Combobox(
+            self.frame, values=keys, font=THEME["font_mono"]
+        )
+        self.cb_throw_trig.set(state["config"]["key_throw_trigger"])
         self.cb_throw_trig.pack(fill="x", pady=2)
 
-        self.e_throw_e_dwell = add_entry("E Dwell (s):", "throw_e_dwell")
-        self.e_throw_after_e_tab = add_entry(
-            "After E to Tab (s):", "throw_after_e_before_tab_delay"
+        # Info label
+        tk.Label(
+            self.frame,
+            text="Fixed sequence: <3s total\nClumsy toggle → Drag → Tab → E-spam",
+            bg=THEME["bg"],
+            fg="#888",
+            font=("Consolas", 8),
+            justify="left",
+        ).pack(anchor="w", pady=2)
+
+        add_section("--- RECORDING SETTINGS ---")
+        tk.Label(
+            self.frame,
+            text="RECORD TRIGGER KEY:",
+            bg=THEME["bg"],
+            fg=THEME["fg"],
+            font=THEME["font_mono"],
+        ).pack(anchor="w", pady=(10, 0))
+        self.cb_record_trig = ttk.Combobox(
+            self.frame, values=keys, font=THEME["font_mono"]
         )
-        self.e_throw_tab_dwell = add_entry("Tab Dwell (s):", "throw_tab_dwell")
-        self.e_throw_after_tab_aim = add_entry(
-            "After Tab to Aim (s):", "throw_after_tab_before_aim_delay"
+        self.cb_record_trig.set(state["config"]["key_record_trigger"])
+        self.cb_record_trig.pack(fill="x", pady=2)
+
+        tk.Label(
+            self.frame,
+            text="PLAYBACK TRIGGER KEY:",
+            bg=THEME["bg"],
+            fg=THEME["fg"],
+            font=THEME["font_mono"],
+        ).pack(anchor="w", pady=(5, 0))
+        self.cb_playback_trig = ttk.Combobox(
+            self.frame, values=keys, font=THEME["font_mono"]
         )
-        self.e_throw_aim_angle = add_entry("Aim Angle (deg):", "throw_aim_angle_deg")
-        self.e_throw_aim_dist = add_entry("Aim Distance:", "throw_aim_up_distance")
-        self.e_throw_aim_dir = add_entry("Aim Direction:", "throw_aim_horizontal_dir")
-        self.e_throw_dc_hold = add_entry(
-            "Double Click Hold (s):", "throw_doubleclick_hold"
-        )
-        self.e_throw_dc_gap = add_entry(
-            "Double Click Gap (s):", "throw_doubleclick_gap"
-        )
-        self.e_throw_bracket_offset = add_entry(
-            "Bracket Offset (s):", "throw_bracket_offset"
-        )
-        self.e_throw_phase1_total = add_entry(
-            "Phase 1 Total (s):", "throw_phase1_total"
-        )
+        self.cb_playback_trig.set(state["config"]["key_playback_trigger"])
+        self.cb_playback_trig.pack(fill="x", pady=2)
+
+        # Info label
+        tk.Label(
+            self.frame,
+            text="Press RECORD key to start/stop recording\nPress PLAYBACK key to replay",
+            bg=THEME["bg"],
+            fg="#888",
+            font=("Consolas", 8),
+            justify="left",
+        ).pack(anchor="w", pady=2)
 
         # Buttons
         f_btn = tk.Frame(self.frame, bg=THEME["bg"])
@@ -1119,6 +1327,10 @@ class App(tk.Tk):
             f_btn, text="DISABLE THROW", command=self.toggle_throw, bg="#003300"
         )
         self.btn_throw.pack(fill="x", pady=2)
+        self.btn_recording = HackerButton(
+            f_btn, text="DISABLE RECORDING", command=self.toggle_recording, bg="#003300"
+        )
+        self.btn_recording.pack(fill="x", pady=2)
         HackerButton(f_btn, text="SAVE SETTINGS", command=self.save).pack(
             fill="x", pady=2
         )
@@ -1163,20 +1375,11 @@ class App(tk.Tk):
 
             # Throw settings
             c["key_throw_trigger"] = self.cb_throw_trig.get()
-            c["throw_e_dwell"] = float(self.e_throw_e_dwell.get())
-            c["throw_after_e_before_tab_delay"] = float(self.e_throw_after_e_tab.get())
-            c["throw_tab_dwell"] = float(self.e_throw_tab_dwell.get())
-            c["throw_after_tab_before_aim_delay"] = float(
-                self.e_throw_after_tab_aim.get()
-            )
-            c["throw_aim_angle_deg"] = float(self.e_throw_aim_angle.get())
-            c["throw_aim_up_distance"] = float(self.e_throw_aim_dist.get())
-            c["throw_aim_horizontal_dir"] = float(self.e_throw_aim_dir.get())
-            c["throw_doubleclick_hold"] = float(self.e_throw_dc_hold.get())
-            c["throw_doubleclick_gap"] = float(self.e_throw_dc_gap.get())
-            c["throw_bracket_offset"] = float(self.e_throw_bracket_offset.get())
-            c["throw_phase1_total"] = float(self.e_throw_phase1_total.get())
-        except:
+
+            # Recording settings
+            c["key_record_trigger"] = self.cb_record_trig.get()
+            c["key_playback_trigger"] = self.cb_playback_trig.get()
+        except Exception:
             pass
         save_config()
         messagebox.showinfo("Saved", "Settings Updated!")
@@ -1240,6 +1443,17 @@ class App(tk.Tk):
         )
         save_config()
 
+    def toggle_recording(self):
+        state["config"]["recording_enabled"] = not state["config"].get(
+            "recording_enabled", True
+        )
+        enabled = state["config"]["recording_enabled"]
+        self.btn_recording.config(
+            text="DISABLE RECORDING" if enabled else "ENABLE RECORDING",
+            bg="#003300" if enabled else "#330000",
+        )
+        save_config()
+
     def toggle_ov(self):
         state["config"]["overlay_enabled"] = not state["config"]["overlay_enabled"]
         self.btn_ov.config(
@@ -1263,5 +1477,11 @@ if __name__ == "__main__":
         state["config"]["net_interface"] = interface_name
         state["config"]["net_interface_type"] = interface_type
 
-    keyboard.Listener(on_press=on_key_press).start()
+    keyboard.Listener(on_press=on_key_press, on_release=on_key_release).start()
+
+    # Start mouse listener for recording
+    from pynput.mouse import Listener as MouseListener
+
+    MouseListener(on_click=on_mouse_click, on_move=on_mouse_move).start()
+
     App().mainloop()
