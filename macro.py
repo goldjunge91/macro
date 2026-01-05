@@ -164,19 +164,7 @@ def get_active_network_interfaces():
     return connected_interfaces
 
 
-def detect_wifi_interface():
-    """Legacy function for backward compatibility"""
-    try:
-        res = subprocess.run(
-            "netsh wlan show interfaces", shell=True, capture_output=True, text=True
-        )
-        if res.returncode == 0:
-            match = re.search(r"^\s*Name\s*:\s*(.+)$", res.stdout, re.MULTILINE)
-            if match:
-                return match.group(1).strip()
-    except:
-        pass
-    return "WiFi"
+
 
 
 def get_current_wifi_profile():
@@ -206,7 +194,15 @@ def load_config():
             pass
 
     if state["config"]["net_interface"] == "Auto-Detect":
-        state["config"]["net_interface"] = detect_wifi_interface()
+        # Auto-detect: use first active interface
+        active_interfaces = get_active_network_interfaces()
+        if active_interfaces:
+            state["config"]["net_interface"] = active_interfaces[0]["name"]
+            state["config"]["net_interface_type"] = active_interfaces[0]["type"]
+        else:
+            # Fallback to WiFi if no interfaces detected
+            state["config"]["net_interface"] = "WiFi"
+            state["config"]["net_interface_type"] = "WiFi"
 
 
 def save_config():
@@ -978,7 +974,15 @@ if __name__ == "__main__":
         sys.exit(0)
     load_config()  # Load before interface detection to see if we have a saved name
     if state["config"]["net_interface"] == "Auto-Detect":
-        state["config"]["net_interface"] = detect_wifi_interface()
+        # Auto-detect: use first active interface
+        active_interfaces = get_active_network_interfaces()
+        if active_interfaces:
+            state["config"]["net_interface"] = active_interfaces[0]["name"]
+            state["config"]["net_interface_type"] = active_interfaces[0]["type"]
+        else:
+            # Fallback to WiFi if no interfaces detected
+            state["config"]["net_interface"] = "WiFi"
+            state["config"]["net_interface_type"] = "WiFi"
 
     keyboard.Listener(on_press=on_key_press).start()
     App().mainloop()
