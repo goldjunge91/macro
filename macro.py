@@ -580,15 +580,64 @@ class App(tk.Tk):
             bg=THEME["bg"],
             fg=THEME["fg"],
             font=THEME["font_mono"],
-        ).pack(anchor="w")
-        self.e_iface = tk.Entry(
-            self.frame, bg="#222", fg="white", font=THEME["font_mono"]
         )
-        self.e_iface.insert(0, str(state["config"].get("net_interface", "WiFi")))
-        self.e_iface.pack(fill="x", pady=2)
+        self.lbl_iface.pack(anchor="w")
 
-        tk.Label(
-            self.frame,
+        # Detect active interfaces
+        active_interfaces = get_active_network_interfaces()
+        interface_values = []
+        for iface in active_interfaces:
+            interface_values.append(f"{iface['name']} ({iface['type']})")
+
+        if not interface_values:
+            interface_values = ["No active interfaces detected"]
+
+        self.cb_iface = ttk.Combobox(
+            self.frame_netsh,
+            values=interface_values,
+            font=THEME["font_mono"],
+            state="readonly",
+        )
+
+        # Set current value or default
+        current_iface = state["config"].get("net_interface", "")
+        current_type = state["config"].get("net_interface_type", "Unknown")
+
+        # Try to find a matching interface in the detected list
+        selected = False
+        if current_iface:
+            for iface_display in interface_values:
+                # Check if the interface name matches (handle both formats)
+                if current_iface in iface_display:
+                    self.cb_iface.set(iface_display)
+                    selected = True
+                    break
+
+        # If not found, use first available or fallback
+        if not selected:
+            if (
+                interface_values
+                and interface_values[0] != "No active interfaces detected"
+            ):
+                self.cb_iface.set(interface_values[0])
+            elif current_iface:
+                # Fallback to stored value even if not detected
+                self.cb_iface.set(f"{current_iface} ({current_type})")
+
+        self.cb_iface.pack(fill="x", pady=2)
+
+        # Add refresh button
+        self.btn_refresh = HackerButton(
+            self.frame_netsh,
+            text="REFRESH INTERFACES",
+            command=self.refresh_interfaces,
+            bg="#003333",
+        )
+        self.btn_refresh.pack(fill="x", pady=2)
+
+        # Clumsy Hotkey
+        self.lbl_clumsy = tk.Label(
+            self.frame_clumsy,
             text="CLUMSY HOTKEY:",
             bg=THEME["bg"],
             fg=THEME["fg"],
@@ -701,6 +750,42 @@ class App(tk.Tk):
             pass
         save_config()
         messagebox.showinfo("Saved", "Settings Updated!")
+
+    def refresh_interfaces(self):
+        """Refresh the list of active network interfaces"""
+        active_interfaces = get_active_network_interfaces()
+        interface_values = []
+        for iface in active_interfaces:
+            interface_values.append(f"{iface['name']} ({iface['type']})")
+
+        if not interface_values:
+            interface_values = ["No active interfaces detected"]
+
+        self.cb_iface["values"] = interface_values
+        if interface_values and interface_values[0] != "No active interfaces detected":
+            self.cb_iface.set(interface_values[0])
+
+        messagebox.showinfo(
+            "Refresh", f"Found {len(active_interfaces)} active interface(s)"
+        )
+
+    def update_method_display(self):
+        """Show/hide interface or clumsy settings based on selected method"""
+        method = self.cb_net_method.get()
+
+        # Hide both frames first
+        self.frame_netsh.pack_forget()
+        self.frame_clumsy.pack_forget()
+
+        # Show appropriate frame right after the network method dropdown
+        if method == "Clumsy":
+            self.frame_clumsy.pack(after=self.cb_net_method, fill="x", pady=2)
+        else:  # netsh
+            self.frame_netsh.pack(after=self.cb_net_method, fill="x", pady=2)
+
+    def on_method_change(self, event=None):
+        """Handle network method change"""
+        self.update_method_display()
 
     def toggle_macro(self):
         state["config"]["macro_enabled"] = not state["config"].get(
