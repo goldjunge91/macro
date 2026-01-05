@@ -113,8 +113,7 @@ def detect_interface_type(interface_name):
     # Additional check using netsh for WiFi
     try:
         res = subprocess.run(
-            f"netsh wlan show interfaces",
-            shell=True,
+            ["netsh", "wlan", "show", "interfaces"],
             capture_output=True,
             text=True,
             timeout=2,
@@ -168,7 +167,7 @@ def detect_wifi_interface():
     """Legacy function for backward compatibility"""
     try:
         res = subprocess.run(
-            "netsh wlan show interfaces", shell=True, capture_output=True, text=True
+            ["netsh", "wlan", "show", "interfaces"], capture_output=True, text=True
         )
         if res.returncode == 0:
             match = re.search(r"^\s*Name\s*:\s*(.+)$", res.stdout, re.MULTILINE)
@@ -182,7 +181,7 @@ def detect_wifi_interface():
 def get_current_wifi_profile():
     try:
         res = subprocess.run(
-            "netsh wlan show interfaces", shell=True, capture_output=True, text=True
+            ["netsh", "wlan", "show", "interfaces"], capture_output=True, text=True
         )
         if res.returncode == 0:
             match = re.search(
@@ -305,8 +304,7 @@ def disconnect_net():
 
             print(f">> DISCONNECTING WiFi: {iface}")
             res = subprocess.run(
-                f'netsh wlan disconnect interface="{iface}"',
-                shell=True,
+                ["netsh", "wlan", "disconnect", f"interface={iface}"],
                 capture_output=True,
                 text=True,
             )
@@ -316,8 +314,7 @@ def disconnect_net():
         elif iface_type == "Ethernet":
             print(f">> DISABLING Ethernet: {iface}")
             res = subprocess.run(
-                f'netsh interface set interface "{iface}" disable',
-                shell=True,
+                ["netsh", "interface", "set", "interface", iface, "disable"],
                 capture_output=True,
                 text=True,
             )
@@ -328,16 +325,14 @@ def disconnect_net():
             # Unknown type, try WiFi first, then Ethernet
             print(f">> DISCONNECTING Unknown interface: {iface}")
             res = subprocess.run(
-                f'netsh wlan disconnect interface="{iface}"',
-                shell=True,
+                ["netsh", "wlan", "disconnect", f"interface={iface}"],
                 capture_output=True,
                 text=True,
             )
             if res.returncode != 0:
                 # Try Ethernet method
                 subprocess.run(
-                    f'netsh interface set interface "{iface}" disable',
-                    shell=True,
+                    ["netsh", "interface", "set", "interface", iface, "disable"],
                     capture_output=True,
                     text=True,
                 )
@@ -371,29 +366,33 @@ def reconnect_net():
         if iface_type == "WiFi":
             prof = state["wifi_profile"]
             print(f">> RECONNECTING WiFi: {iface}")
-            cmd = (
-                f'netsh wlan connect interface="{iface}" name="{prof}"'
-                if prof
-                else f'netsh wlan connect interface="{iface}"'
-            )
-            subprocess.Popen(cmd, shell=True)
+            if prof:
+                subprocess.Popen(
+                    ["netsh", "wlan", "connect", f"interface={iface}", f"name={prof}"]
+                )
+            else:
+                subprocess.Popen(
+                    ["netsh", "wlan", "connect", f"interface={iface}"]
+                )
 
         elif iface_type == "Ethernet":
             print(f">> RE-ENABLING Ethernet: {iface}")
             subprocess.Popen(
-                f'netsh interface set interface "{iface}" enable', shell=True
+                ["netsh", "interface", "set", "interface", iface, "enable"]
             )
 
         else:
             # Unknown type, try WiFi first
             prof = state.get("wifi_profile")
             print(f">> RECONNECTING Unknown interface: {iface}")
-            cmd = (
-                f'netsh wlan connect interface="{iface}" name="{prof}"'
-                if prof
-                else f'netsh interface set interface "{iface}" enable'
-            )
-            subprocess.Popen(cmd, shell=True)
+            if prof:
+                subprocess.Popen(
+                    ["netsh", "wlan", "connect", f"interface={iface}", f"name={prof}"]
+                )
+            else:
+                subprocess.Popen(
+                    ["netsh", "interface", "set", "interface", iface, "enable"]
+                )
 
     update_overlay()
 
