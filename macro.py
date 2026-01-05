@@ -87,7 +87,7 @@ def run_as_admin():
 def sanitize_interface_name(name):
     """
     Sanitize interface or profile name to prevent command injection.
-    Only allows alphanumeric characters, spaces, hyphens, underscores, and dots.
+    Only allows alphanumeric characters, spaces, hyphens, underscores, dots, and parentheses.
     Returns the sanitized name or raises ValueError if the name is invalid.
     """
     if not name or not isinstance(name, str):
