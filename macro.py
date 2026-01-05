@@ -84,11 +84,24 @@ def run_as_admin():
     return False
 
 
-def test_internet_connectivity(timeout=1):
-    """Test if internet is reachable via ping"""
+def test_internet_connectivity(timeout=1, interface_ip=None):
+    """Test if internet is reachable via ping, optionally through a specific interface
+    
+    Args:
+        timeout: Timeout in seconds for the ping test
+        interface_ip: Optional IP address of the interface to test through
+    """
     try:
+        cmd = ["ping", "-n", "1", "-w", str(timeout * 1000)]
+        
+        # If interface IP is provided, bind to that source address
+        if interface_ip:
+            cmd.extend(["-S", interface_ip])
+        
+        cmd.append("8.8.8.8")
+        
         result = subprocess.run(
-            ["ping", "-n", "1", "-w", str(timeout * 1000), "8.8.8.8"],
+            cmd,
             capture_output=True,
             timeout=timeout + 1,
         )
@@ -130,6 +143,7 @@ def detect_interface_type(interface_name):
 def get_active_network_interfaces():
     """Get list of active network interfaces with internet connectivity"""
     active_interfaces = []
+    addrs = {}  # Initialize outside try block
 
     try:
         # Get all network interfaces using psutil
@@ -154,12 +168,18 @@ def get_active_network_interfaces():
 
     # Filter to only interfaces with internet connectivity
     connected_interfaces = []
-    if active_interfaces:
-        # Test connectivity once globally first
-        has_internet = test_internet_connectivity()
-        if has_internet:
-            # If we have internet, include all active interfaces
-            connected_interfaces = active_interfaces
+    for iface in active_interfaces:
+        # Get the IPv4 address for this interface
+        if iface["name"] in addrs:
+            ipv4_addr = None
+            for addr in addrs[iface["name"]]:
+                if addr.family == 2:  # AF_INET (IPv4)
+                    ipv4_addr = addr.address
+                    break
+            
+            # Test connectivity through this specific interface
+            if ipv4_addr and test_internet_connectivity(timeout=1, interface_ip=ipv4_addr):
+                connected_interfaces.append(iface)
 
     return connected_interfaces
 
