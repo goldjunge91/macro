@@ -164,7 +164,14 @@ def get_active_network_interfaces():
     return connected_interfaces
 
 
-
+def auto_detect_interface():
+    """Auto-detect and return the first active network interface"""
+    active_interfaces = get_active_network_interfaces()
+    if active_interfaces:
+        return active_interfaces[0]["name"], active_interfaces[0]["type"]
+    else:
+        # Fallback to WiFi if no interfaces detected
+        return "WiFi", "WiFi"
 
 
 def get_current_wifi_profile():
@@ -195,14 +202,9 @@ def load_config():
 
     if state["config"]["net_interface"] == "Auto-Detect":
         # Auto-detect: use first active interface
-        active_interfaces = get_active_network_interfaces()
-        if active_interfaces:
-            state["config"]["net_interface"] = active_interfaces[0]["name"]
-            state["config"]["net_interface_type"] = active_interfaces[0]["type"]
-        else:
-            # Fallback to WiFi if no interfaces detected
-            state["config"]["net_interface"] = "WiFi"
-            state["config"]["net_interface_type"] = "WiFi"
+        interface_name, interface_type = auto_detect_interface()
+        state["config"]["net_interface"] = interface_name
+        state["config"]["net_interface_type"] = interface_type
 
 
 def save_config():
@@ -975,14 +977,9 @@ if __name__ == "__main__":
     load_config()  # Load before interface detection to see if we have a saved name
     if state["config"]["net_interface"] == "Auto-Detect":
         # Auto-detect: use first active interface
-        active_interfaces = get_active_network_interfaces()
-        if active_interfaces:
-            state["config"]["net_interface"] = active_interfaces[0]["name"]
-            state["config"]["net_interface_type"] = active_interfaces[0]["type"]
-        else:
-            # Fallback to WiFi if no interfaces detected
-            state["config"]["net_interface"] = "WiFi"
-            state["config"]["net_interface_type"] = "WiFi"
+        interface_name, interface_type = auto_detect_interface()
+        state["config"]["net_interface"] = interface_name
+        state["config"]["net_interface_type"] = interface_type
 
     keyboard.Listener(on_press=on_key_press).start()
     App().mainloop()
