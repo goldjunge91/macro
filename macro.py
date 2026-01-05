@@ -143,6 +143,7 @@ def detect_interface_type(interface_name):
 def get_active_network_interfaces():
     """Get list of active network interfaces with internet connectivity"""
     active_interfaces = []
+    addrs = {}  # Initialize outside try block
 
     try:
         # Get all network interfaces using psutil
