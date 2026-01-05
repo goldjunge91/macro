@@ -8,6 +8,7 @@ import ctypes
 import re
 import tkinter as tk
 from tkinter import ttk, messagebox
+import math
 
 
 # --- DEPENDENCY CHECK ---
@@ -34,6 +35,7 @@ def check_dependencies():
 
 check_dependencies()
 from pynput import keyboard
+from pynput.mouse import Controller as MouseController, Button
 import psutil
 
 # --- CONFIGURATION ---
@@ -56,6 +58,20 @@ DEFAULT_CONFIG = {
     "overlay_enabled": True,
     "overlay_x": -165,
     "overlay_y": 31,
+    # Throw macro settings
+    "key_throw_trigger": "Key.f4",
+    "throw_e_dwell": 0.03,
+    "throw_after_e_before_tab_delay": 0.05,
+    "throw_tab_dwell": 0.03,
+    "throw_after_tab_before_aim_delay": 0.05,
+    "throw_aim_angle_deg": 70,
+    "throw_aim_up_distance": 250,
+    "throw_aim_horizontal_dir": 1,
+    "throw_doubleclick_hold": 0.022,
+    "throw_doubleclick_gap": 0.055,
+    "throw_bracket_offset": 1.61,
+    "throw_phase1_total": 2.01,
+    "throw_enabled": True,
 }
 
 state = {
@@ -65,6 +81,8 @@ state = {
     "overlay_ref": None,
     "config": DEFAULT_CONFIG.copy(),
 }
+
+mouse = MouseController()
 
 
 # --- SYSTEM FUNCTIONS ---
@@ -92,28 +110,28 @@ def sanitize_interface_name(name):
     """
     if not name or not isinstance(name, str):
         raise ValueError("Interface name must be a non-empty string")
-    
+
     # Allow only safe characters: alphanumeric, space, hyphen, underscore, dot, and parentheses
     # This covers most legitimate Windows interface names while preventing injection
-    allowed_pattern = re.compile(r'^[a-zA-Z0-9\s\-_.()]+$')
-    
+    allowed_pattern = re.compile(r"^[a-zA-Z0-9\s\-_.()]+$")
+
     if not allowed_pattern.match(name):
         raise ValueError(f"Interface name contains invalid characters: {name}")
-    
+
     return name
 
 
-def test_internet_connectivity(timeout=1):
+def test_internet_connectivity(timeout=1, interface_ip=None):
     """Test if internet is reachable via ping"""
     try:
         cmd = ["ping", "-n", "1", "-w", str(timeout * 1000)]
-        
+
         # If interface IP is provided, bind to that source address
         if interface_ip:
             cmd.extend(["-S", interface_ip])
-        
+
         cmd.append("8.8.8.8")
-        
+
         result = subprocess.run(
             cmd,
             capture_output=True,
@@ -189,9 +207,11 @@ def get_active_network_interfaces():
                 if addr.family == 2:  # AF_INET (IPv4)
                     ipv4_addr = addr.address
                     break
-            
+
             # Test connectivity through this specific interface
-            if ipv4_addr and test_internet_connectivity(timeout=1, interface_ip=ipv4_addr):
+            if ipv4_addr and test_internet_connectivity(
+                timeout=1, interface_ip=ipv4_addr
+            ):
                 connected_interfaces.append(iface)
 
     return connected_interfaces
@@ -204,11 +224,15 @@ def auto_detect_interface():
         if active_interfaces and len(active_interfaces) > 0:
             # Validate that the interface has the expected keys
             first_interface = active_interfaces[0]
-            if isinstance(first_interface, dict) and "name" in first_interface and "type" in first_interface:
+            if (
+                isinstance(first_interface, dict)
+                and "name" in first_interface
+                and "type" in first_interface
+            ):
                 return first_interface["name"], first_interface["type"]
     except Exception as e:
         print(f"!! ERROR in auto_detect_interface: {e}")
-    
+
     # Fallback to WiFi if no interfaces detected or error occurred
     return "WiFi", "WiFi"
 
@@ -216,9 +240,7 @@ def auto_detect_interface():
 def get_current_wifi_profile():
     try:
         res = subprocess.run(
-            ["netsh", "wlan", "show", "interfaces"],
-            capture_output=True,
-            text=True
+            ["netsh", "wlan", "show", "interfaces"], capture_output=True, text=True
         )
         if res.returncode == 0:
             match = re.search(
@@ -335,7 +357,7 @@ def disconnect_net():
         state["is_lagging"] = True
         iface = state["config"]["net_interface"]
         iface_type = state["config"].get("net_interface_type", "Unknown")
-        
+
         # Sanitize the interface name to prevent command injection
         try:
             iface = sanitize_interface_name(iface)
@@ -410,7 +432,7 @@ def reconnect_net():
         state["is_lagging"] = False
         iface = state["config"]["net_interface"]
         iface_type = state["config"].get("net_interface_type", "Unknown")
-        
+
         # Sanitize the interface name to prevent command injection
         try:
             iface = sanitize_interface_name(iface)
@@ -421,24 +443,26 @@ def reconnect_net():
         if iface_type == "WiFi":
             prof = state.get("wifi_profile")
             print(f">> RECONNECTING WiFi: {iface}")
-            
+
             if prof:
                 # Sanitize the profile name as well
                 try:
                     prof = sanitize_interface_name(prof)
                     subprocess.Popen(
-                        ["netsh", "wlan", "connect", f"interface={iface}", f"name={prof}"]
+                        [
+                            "netsh",
+                            "wlan",
+                            "connect",
+                            f"interface={iface}",
+                            f"name={prof}",
+                        ]
                     )
                 except ValueError as e:
                     print(f"!! ERROR: Invalid profile name: {e}")
                     # Fall back to connecting without profile name
-                    subprocess.Popen(
-                        ["netsh", "wlan", "connect", f"interface={iface}"]
-                    )
+                    subprocess.Popen(["netsh", "wlan", "connect", f"interface={iface}"])
             else:
-                subprocess.Popen(
-                    ["netsh", "wlan", "connect", f"interface={iface}"]
-                )
+                subprocess.Popen(["netsh", "wlan", "connect", f"interface={iface}"])
 
         elif iface_type == "Ethernet":
             print(f">> RE-ENABLING Ethernet: {iface}")
@@ -450,12 +474,18 @@ def reconnect_net():
             # Unknown type, try WiFi first
             prof = state.get("wifi_profile")
             print(f">> RECONNECTING Unknown interface: {iface}")
-            
+
             if prof:
                 try:
                     prof = sanitize_interface_name(prof)
                     subprocess.Popen(
-                        ["netsh", "wlan", "connect", f"interface={iface}", f"name={prof}"]
+                        [
+                            "netsh",
+                            "wlan",
+                            "connect",
+                            f"interface={iface}",
+                            f"name={prof}",
+                        ]
                     )
                 except ValueError:
                     # Fall back to enabling interface
@@ -523,6 +553,107 @@ def click_mouse_fast():
 
     ii_.mi = MouseInput(0, 0, 0, 0x0004, 0, ctypes.pointer(extra))  # Up
     SendInput(1, ctypes.pointer(Input(ctypes.c_ulong(0), ii_)), ctypes.sizeof(Input))
+
+
+# === THROW MACRO FUNCTIONS ===
+def tap_e(dwell=0.03):
+    """Tap E key"""
+    keyboard.press(keyboard.KeyCode.from_char("e"))
+    time.sleep(dwell)
+    keyboard.release(keyboard.KeyCode.from_char("e"))
+
+
+def tap_tab(dwell=0.03):
+    """Tap Tab key"""
+    keyboard.press(keyboard.Key.tab)
+    time.sleep(dwell)
+    keyboard.release(keyboard.Key.tab)
+
+
+def move_mouse_up_angle(distance, angle_deg=70, horizontal_dir=1, smooth_steps=30):
+    """Move mouse at angle"""
+    angle_rad = math.radians(angle_deg)
+    dx = horizontal_dir * distance * math.cos(angle_rad)
+    dy = -distance * math.sin(angle_rad)
+
+    start_x, start_y = mouse.position
+    for i in range(smooth_steps + 1):
+        t = i / smooth_steps
+        x = start_x + dx * t
+        y = start_y + dy * t
+        mouse.position = (int(x), int(y))
+        time.sleep(0.001)
+
+
+def double_click_left(hold_time=0.022, gap=0.055):
+    """Double click left mouse button"""
+    mouse.press(Button.left)
+    time.sleep(hold_time)
+    mouse.release(Button.left)
+    time.sleep(gap)
+    mouse.press(Button.left)
+    time.sleep(hold_time)
+    mouse.release(Button.left)
+
+
+def tap_bracket(dwell=0.006):
+    """Tap bracket key"""
+    keyboard.press(keyboard.KeyCode.from_vk(219))  # '['
+    time.sleep(dwell)
+    keyboard.release(keyboard.KeyCode.from_vk(219))
+
+
+def shift_alt_click_once(shift_dwell=0.018, alt_dwell=0.006):
+    """Perform Shift+Alt+Click"""
+    keyboard.press(keyboard.Key.shift)
+    time.sleep(shift_dwell)
+    keyboard.press(keyboard.Key.alt)
+    time.sleep(alt_dwell)
+    mouse.press(Button.left)
+    time.sleep(0.02)
+    mouse.release(Button.left)
+    keyboard.release(keyboard.Key.alt)
+    keyboard.release(keyboard.Key.shift)
+
+
+def run_throw_macro():
+    if not state["config"].get("throw_enabled", True):
+        return
+    print(">> THROW MACRO: STARTING")
+    start_time = time.time()
+
+    c = state["config"]
+    # Phase 1: E + Tab + Aim
+    tap_e(c.get("throw_e_dwell", 0.03))
+    time.sleep(c.get("throw_after_e_before_tab_delay", 0.05))
+    tap_tab(c.get("throw_tab_dwell", 0.03))
+    time.sleep(c.get("throw_after_tab_before_aim_delay", 0.05))
+    move_mouse_up_angle(
+        c.get("throw_aim_up_distance", 250),
+        c.get("throw_aim_angle_deg", 70),
+        c.get("throw_aim_horizontal_dir", 1),
+    )
+
+    # Phase 2: Double Click
+    double_click_left(
+        c.get("throw_doubleclick_hold", 0.022), c.get("throw_doubleclick_gap", 0.055)
+    )
+
+    # Phase 3: Bracket
+    elapsed = time.time() - start_time
+    bracket_offset = c.get("throw_bracket_offset", 1.61)
+    if bracket_offset > elapsed:
+        time.sleep(bracket_offset - elapsed)
+    tap_bracket()
+
+    # Phase 4: Shift+Alt+Click
+    elapsed = time.time() - start_time
+    phase1_total = c.get("throw_phase1_total", 2.01)
+    if phase1_total > elapsed:
+        time.sleep(phase1_total - elapsed)
+    shift_alt_click_once()
+
+    print(f">> THROW MACRO: COMPLETE ({time.time() - start_time:.3f}s)")
 
 
 # --- MACRO ENGINE ---
@@ -624,6 +755,13 @@ def on_key_press(key):
         target = parse_key_string(state["config"].get("key_macro_trigger", "Key.f3"))
         if key == target or (hasattr(key, "char") and key.char == target):
             threading.Thread(target=run_complex_macro).start()
+
+        # Throw macro trigger
+        throw_target = parse_key_string(
+            state["config"].get("key_throw_trigger", "Key.f4")
+        )
+        if key == throw_target or (hasattr(key, "char") and key.char == throw_target):
+            threading.Thread(target=run_throw_macro).start()
     except:
         pass
 
@@ -726,7 +864,7 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("MACRO CONTROLLER")
-        self.geometry("380x750")
+        self.geometry("380x950")
         self.configure(bg=THEME["bg"])
         self.attributes("-topmost", True)
 
@@ -750,6 +888,7 @@ class App(tk.Tk):
             + [str(i) for i in range(10)]
             + [f"Key.f{i}" for i in range(1, 13)]
         )
+        clumsy_keys = [chr(i) for i in range(97, 123)] + [str(i) for i in range(10)]
 
         def add_section(txt):
             tk.Label(
@@ -785,11 +924,11 @@ class App(tk.Tk):
         self.cb_net_method.set(state["config"].get("network_method", "netsh"))
         self.cb_net_method.pack(fill="x", pady=2)
         self.cb_net_method.bind("<<ComboboxSelected>>", self.on_method_change)
-        
+
         # Create frames for conditional display
         self.frame_netsh = tk.Frame(self.frame, bg=THEME["bg"])
         self.frame_clumsy = tk.Frame(self.frame, bg=THEME["bg"])
-        
+
         # Netsh Interface Selection
         self.lbl_iface = tk.Label(
             self.frame_netsh,
@@ -861,12 +1000,12 @@ class App(tk.Tk):
             font=THEME["font_mono"],
         )
         self.lbl_clumsy.pack(anchor="w")
-        self.e_clumsy_key = tk.Entry(
-            self.frame_clumsy, bg="#222", fg="white", font=THEME["font_mono"]
+        self.cb_clumsy_key = ttk.Combobox(
+            self.frame_clumsy, values=clumsy_keys, font=THEME["font_mono"]
         )
-        self.e_clumsy_key.insert(0, str(state["config"].get("clumsy_hotkey", "[")))
-        self.e_clumsy_key.pack(fill="x", pady=2)
-        
+        self.cb_clumsy_key.set(state["config"].get("clumsy_hotkey", "8"))
+        self.cb_clumsy_key.pack(fill="x", pady=2)
+
         # Show appropriate frame based on method
         self.update_method_display()
 
@@ -931,6 +1070,44 @@ class App(tk.Tk):
         self.e_s_st = add_entry("Start Delay (s):", "macro_spam_start")
         self.e_s_ln = add_entry("Duration (s):", "macro_spam_len")
 
+        add_section("--- THROW MACRO SETTINGS ---")
+        self.cb_throw_trig = ttk.Combobox(
+            self.frame, values=keys, font=THEME["font_mono"]
+        )
+        self.cb_throw_trig.set(state["config"]["key_throw_trigger"])
+        tk.Label(
+            self.frame,
+            text="THROW TRIGGER KEY:",
+            bg=THEME["bg"],
+            fg=THEME["fg"],
+            font=THEME["font_mono"],
+        ).pack(anchor="w", pady=(10, 0))
+        self.cb_throw_trig.pack(fill="x", pady=2)
+
+        self.e_throw_e_dwell = add_entry("E Dwell (s):", "throw_e_dwell")
+        self.e_throw_after_e_tab = add_entry(
+            "After E to Tab (s):", "throw_after_e_before_tab_delay"
+        )
+        self.e_throw_tab_dwell = add_entry("Tab Dwell (s):", "throw_tab_dwell")
+        self.e_throw_after_tab_aim = add_entry(
+            "After Tab to Aim (s):", "throw_after_tab_before_aim_delay"
+        )
+        self.e_throw_aim_angle = add_entry("Aim Angle (deg):", "throw_aim_angle_deg")
+        self.e_throw_aim_dist = add_entry("Aim Distance:", "throw_aim_up_distance")
+        self.e_throw_aim_dir = add_entry("Aim Direction:", "throw_aim_horizontal_dir")
+        self.e_throw_dc_hold = add_entry(
+            "Double Click Hold (s):", "throw_doubleclick_hold"
+        )
+        self.e_throw_dc_gap = add_entry(
+            "Double Click Gap (s):", "throw_doubleclick_gap"
+        )
+        self.e_throw_bracket_offset = add_entry(
+            "Bracket Offset (s):", "throw_bracket_offset"
+        )
+        self.e_throw_phase1_total = add_entry(
+            "Phase 1 Total (s):", "throw_phase1_total"
+        )
+
         # Buttons
         f_btn = tk.Frame(self.frame, bg=THEME["bg"])
         f_btn.pack(fill="x", pady=20)
@@ -938,6 +1115,10 @@ class App(tk.Tk):
             f_btn, text="DISABLE MACRO", command=self.toggle_macro, bg="#003300"
         )
         self.btn_macro.pack(fill="x", pady=2)
+        self.btn_throw = HackerButton(
+            f_btn, text="DISABLE THROW", command=self.toggle_throw, bg="#003300"
+        )
+        self.btn_throw.pack(fill="x", pady=2)
         HackerButton(f_btn, text="SAVE SETTINGS", command=self.save).pack(
             fill="x", pady=2
         )
@@ -958,7 +1139,7 @@ class App(tk.Tk):
         c["macro_disconnect_mode"] = self.cb_disc_mode.get()
         c["click_cps"] = self.s_cps.get()
         c["network_method"] = self.cb_net_method.get()
-        c["clumsy_hotkey"] = self.e_clumsy_key.get()
+        c["clumsy_hotkey"] = self.cb_clumsy_key.get()
 
         # Parse interface selection from dropdown
         iface_selection = self.cb_iface.get()
@@ -979,6 +1160,22 @@ class App(tk.Tk):
             c["macro_net_len"] = float(self.e_n_ln.get())
             c["macro_spam_start"] = float(self.e_s_st.get())
             c["macro_spam_len"] = float(self.e_s_ln.get())
+
+            # Throw settings
+            c["key_throw_trigger"] = self.cb_throw_trig.get()
+            c["throw_e_dwell"] = float(self.e_throw_e_dwell.get())
+            c["throw_after_e_before_tab_delay"] = float(self.e_throw_after_e_tab.get())
+            c["throw_tab_dwell"] = float(self.e_throw_tab_dwell.get())
+            c["throw_after_tab_before_aim_delay"] = float(
+                self.e_throw_after_tab_aim.get()
+            )
+            c["throw_aim_angle_deg"] = float(self.e_throw_aim_angle.get())
+            c["throw_aim_up_distance"] = float(self.e_throw_aim_dist.get())
+            c["throw_aim_horizontal_dir"] = float(self.e_throw_aim_dir.get())
+            c["throw_doubleclick_hold"] = float(self.e_throw_dc_hold.get())
+            c["throw_doubleclick_gap"] = float(self.e_throw_dc_gap.get())
+            c["throw_bracket_offset"] = float(self.e_throw_bracket_offset.get())
+            c["throw_phase1_total"] = float(self.e_throw_phase1_total.get())
         except:
             pass
         save_config()
@@ -1030,6 +1227,17 @@ class App(tk.Tk):
             bg="#003300" if enabled else "#330000",
         )
         update_overlay()
+        save_config()
+
+    def toggle_throw(self):
+        state["config"]["throw_enabled"] = not state["config"].get(
+            "throw_enabled", True
+        )
+        enabled = state["config"]["throw_enabled"]
+        self.btn_throw.config(
+            text="DISABLE THROW" if enabled else "ENABLE THROW",
+            bg="#003300" if enabled else "#330000",
+        )
         save_config()
 
     def toggle_ov(self):
