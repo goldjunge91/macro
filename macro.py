@@ -207,8 +207,14 @@ def auto_detect_interface():
             match = re.search(r"^\s*Name\s*:\s*(.+)$", res.stdout, re.MULTILINE)
             if match:
                 interface_name = match.group(1).strip()
-                interface_type = detect_interface_type(interface_name)
-                return (interface_name, interface_type)
+                # Sanitize the interface name from netsh output
+                try:
+                    interface_name = sanitize_interface_name(interface_name)
+                    interface_type = detect_interface_type(interface_name)
+                    return (interface_name, interface_type)
+                except ValueError:
+                    # If the name from netsh is invalid, fall through to default
+                    pass
     except Exception:
         # If WiFi detection fails, return default WiFi interface
         pass
