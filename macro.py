@@ -198,7 +198,7 @@ def get_active_network_interfaces():
 
 
 def auto_detect_interface():
-    """Auto-detect and return the first active network interface"""
+    """Auto-detect and return the first active network interface as (name, type) tuple"""
     try:
         res = subprocess.run(
             ["netsh", "wlan", "show", "interfaces"], capture_output=True, text=True
@@ -206,13 +206,17 @@ def auto_detect_interface():
         if res.returncode == 0:
             match = re.search(r"^\s*Name\s*:\s*(.+)$", res.stdout, re.MULTILINE)
             if match:
-                return match.group(1).strip()
-    except:
+                interface_name = match.group(1).strip()
+                interface_type = detect_interface_type(interface_name)
+                return (interface_name, interface_type)
+    except Exception:
+        # If WiFi detection fails, return default WiFi interface
         pass
-    return "WiFi"
+    return ("WiFi", "WiFi")
 
 
 def get_current_wifi_profile():
+    """Get the currently connected WiFi profile name"""
     try:
         res = subprocess.run(
             ["netsh", "wlan", "show", "interfaces"], capture_output=True, text=True
@@ -225,7 +229,8 @@ def get_current_wifi_profile():
             )
             if match:
                 return match.group(1).strip()
-    except:
+    except Exception:
+        # If we can't get the WiFi profile, return None to use default connection
         pass
     return None
 
@@ -419,6 +424,12 @@ def reconnect_net():
             prof = state.get("wifi_profile")
             print(f">> RECONNECTING WiFi: {iface}")
             if prof:
+                # Sanitize the profile name to prevent command injection
+                try:
+                    prof = sanitize_interface_name(prof)
+                except ValueError as e:
+                    print(f"!! ERROR: Invalid WiFi profile name: {e}")
+                    return
                 subprocess.Popen(
                     ["netsh", "wlan", "connect", f"interface={iface}", f"name={prof}"]
                 )
@@ -438,6 +449,12 @@ def reconnect_net():
             prof = state.get("wifi_profile")
             print(f">> RECONNECTING Unknown interface: {iface}")
             if prof:
+                # Sanitize the profile name to prevent command injection
+                try:
+                    prof = sanitize_interface_name(prof)
+                except ValueError as e:
+                    print(f"!! ERROR: Invalid WiFi profile name: {e}")
+                    return
                 subprocess.Popen(
                     ["netsh", "wlan", "connect", f"interface={iface}", f"name={prof}"]
                 )
