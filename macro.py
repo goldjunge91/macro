@@ -197,21 +197,20 @@ def get_active_network_interfaces():
     return connected_interfaces
 
 
-def detect_wifi_interface():
-    """Legacy function for backward compatibility"""
+def auto_detect_interface():
+    """Auto-detect and return the first active network interface"""
     try:
-        res = subprocess.run(
-            ["netsh", "wlan", "show", "interfaces"],
-            capture_output=True,
-            text=True
-        )
-        if res.returncode == 0:
-            match = re.search(r"^\s*Name\s*:\s*(.+)$", res.stdout, re.MULTILINE)
-            if match:
-                return match.group(1).strip()
-    except:
-        pass
-    return "WiFi"
+        active_interfaces = get_active_network_interfaces()
+        if active_interfaces and len(active_interfaces) > 0:
+            # Validate that the interface has the expected keys
+            first_interface = active_interfaces[0]
+            if isinstance(first_interface, dict) and "name" in first_interface and "type" in first_interface:
+                return first_interface["name"], first_interface["type"]
+    except Exception as e:
+        print(f"!! ERROR in auto_detect_interface: {e}")
+    
+    # Fallback to WiFi if no interfaces detected or error occurred
+    return "WiFi", "WiFi"
 
 
 def get_current_wifi_profile():
@@ -243,7 +242,10 @@ def load_config():
             pass
 
     if state["config"]["net_interface"] == "Auto-Detect":
-        state["config"]["net_interface"] = detect_wifi_interface()
+        # Auto-detect: use first active interface
+        interface_name, interface_type = auto_detect_interface()
+        state["config"]["net_interface"] = interface_name
+        state["config"]["net_interface_type"] = interface_type
 
 
 def save_config():
@@ -1048,7 +1050,10 @@ if __name__ == "__main__":
         sys.exit(0)
     load_config()  # Load before interface detection to see if we have a saved name
     if state["config"]["net_interface"] == "Auto-Detect":
-        state["config"]["net_interface"] = detect_wifi_interface()
+        # Auto-detect: use first active interface
+        interface_name, interface_type = auto_detect_interface()
+        state["config"]["net_interface"] = interface_name
+        state["config"]["net_interface_type"] = interface_type
 
     keyboard.Listener(on_press=on_key_press).start()
     App().mainloop()
