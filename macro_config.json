@@ -31,5 +31,20 @@
   "throw_enabled": true,
   "key_record_trigger": "Key.f5",
   "key_playback_trigger": "Key.f8",
-  "recording_enabled": true
+  "recording_enabled": true,
+  "throw_start_settle_delay": 0.03,
+  "throw_pre_drag_delay": 0.06,
+  "throw_tab_delay_after_drag": 0.3,
+  "throw_final_settle_delay": 0.05,
+  "throw_pre_spam_delay": 0.0,
+  "throw_post_tab_to_spam_delay": 0.004,
+  "throw_post_clumsy_tap_delay": 0.021,
+  "throw_post_tab_tap_delay": 0.021,
+  "throw_clumsy_deactivate_after_spam": 0.2,
+  "throw_spam_duration": 2.25,
+  "throw_e_period": 0.0219,
+  "throw_drag_time": 0.5,
+  "throw_drag_left_pixels": -2000,
+  "key_throw_v2_trigger": "Key.f7",
+  "throw_v2_enabled": true
 }

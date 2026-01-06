@@ -1,0 +1,229 @@
+import tkinter as tk
+from tkinter import ttk, messagebox
+
+THEME = {
+    "bg": "#0a0a0a",
+    "fg": "#00ff41",
+    "warning": "#ff3333",
+    "font_main": ("Consolas", 10),
+    "font_header": ("Consolas", 14, "bold"),
+    "font_mono": ("Consolas", 9),
+}
+
+
+class HackerButton(tk.Button):
+    def __init__(self, master, **kwargs):
+        super().__init__(master, **kwargs)
+        self.config(
+            bg="black",
+            fg=THEME["fg"],
+            activebackground=THEME["fg"],
+            activeforeground="black",
+            font=THEME["font_main"],
+            bd=1,
+            relief="solid",
+        )
+
+
+class SettingsWindow(tk.Toplevel):
+    def __init__(self, master, state, save_config):
+        super().__init__(master)
+        self.state = state
+        self.save_config_func = save_config
+        
+        self.title("MACRO SETTINGS")
+        self.geometry("500x600")
+        self.configure(bg=THEME["bg"])
+        self.attributes("-topmost", True)
+        
+        tk.Label(
+            self,
+            text="[ MACRO TIMINGS ]",
+            font=THEME["font_header"],
+            bg=THEME["bg"],
+            fg=THEME["fg"],
+        ).pack(pady=(20, 10))
+        
+        self.notebook = ttk.Notebook(self)
+        self.notebook.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        self.create_timeline_tab()
+        self.create_throw_tab()
+        self.create_recording_tab()
+        
+        btn_frame = tk.Frame(self, bg=THEME["bg"])
+        btn_frame.pack(fill="x", padx=20, pady=10)
+        
+        HackerButton(
+            btn_frame,
+            text="SAVE SETTINGS",
+            command=self.save_settings,
+            bg="#003300"
+        ).pack(side="left", fill="x", expand=True, padx=5)
+        
+        HackerButton(
+            btn_frame,
+            text="CLOSE",
+            command=self.destroy,
+            bg="#330000"
+        ).pack(side="left", fill="x", expand=True, padx=5)
+    
+    def create_timeline_tab(self):
+        frame = tk.Frame(self.notebook, bg=THEME["bg"])
+        self.notebook.add(frame, text="Timeline Macro")
+        
+        canvas = tk.Canvas(frame, bg=THEME["bg"], highlightthickness=0)
+        scrollbar = tk.Scrollbar(frame, orient="vertical", command=canvas.yview)
+        scrollable = tk.Frame(canvas, bg=THEME["bg"])
+        
+        scrollable.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        def add_section(txt):
+            tk.Label(
+                scrollable,
+                text=txt,
+                bg=THEME["bg"],
+                fg="#888",
+                font=("Consolas", 9, "bold"),
+            ).pack(anchor="w", pady=(10, 2), padx=10)
+        
+        def add_entry(txt, key):
+            f = tk.Frame(scrollable, bg=THEME["bg"])
+            f.pack(fill="x", pady=2, padx=10)
+            tk.Label(
+                f, text=txt, bg=THEME["bg"], fg="white", width=20, anchor="w"
+            ).pack(side="left")
+            e = tk.Entry(f, bg="#222", fg="white", font=THEME["font_mono"])
+            e.insert(0, str(self.state["config"].get(key, "")))
+            e.pack(side="left", fill="x", expand=True)
+            return e
+        
+        add_section("--- 1. HOLD CLICK ---")
+        self.e_h_st = add_entry("Start Delay (s):", "macro_hold_start")
+        self.e_h_ln = add_entry("Duration (s):", "macro_hold_len")
+        
+        add_section("--- 2. NETWORK ---")
+        self.e_n_st = add_entry("Start Delay (s):", "macro_net_start")
+        self.e_n_ln = add_entry("Offline Time (s):", "macro_net_len")
+        
+        add_section("--- 3. SPAM CLICK ---")
+        self.e_s_st = add_entry("Start Delay (s):", "macro_spam_start")
+        self.e_s_ln = add_entry("Duration (s):", "macro_spam_len")
+    
+    def create_throw_tab(self):
+        frame = tk.Frame(self.notebook, bg=THEME["bg"])
+        self.notebook.add(frame, text="Throw Macro")
+        
+        canvas = tk.Canvas(frame, bg=THEME["bg"], highlightthickness=0)
+        scrollbar = tk.Scrollbar(frame, orient="vertical", command=canvas.yview)
+        scrollable = tk.Frame(canvas, bg=THEME["bg"])
+        
+        scrollable.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        def add_section(txt):
+            tk.Label(
+                scrollable,
+                text=txt,
+                bg=THEME["bg"],
+                fg="#888",
+                font=("Consolas", 9, "bold"),
+            ).pack(anchor="w", pady=(10, 2), padx=10)
+        
+        def add_entry(txt, key, default=0.0):
+            f = tk.Frame(scrollable, bg=THEME["bg"])
+            f.pack(fill="x", pady=2, padx=10)
+            tk.Label(
+                f, text=txt, bg=THEME["bg"], fg="white", width=25, anchor="w"
+            ).pack(side="left")
+            e = tk.Entry(f, bg="#222", fg="white", font=THEME["font_mono"])
+            e.insert(0, str(self.state["config"].get(key, default)))
+            e.pack(side="left", fill="x", expand=True)
+            return e
+        
+        add_section("--- TIMING DELAYS ---")
+        self.e_throw_start_settle = add_entry("Start Settle Delay (s):", "throw_start_settle_delay", 0.03)
+        self.e_throw_pre_drag = add_entry("Pre-Drag Delay (s):", "throw_pre_drag_delay", 0.06)
+        self.e_throw_tab_delay = add_entry("Tab Delay After Drag (s):", "throw_tab_delay_after_drag", 0.3)
+        self.e_throw_final_settle = add_entry("Final Settle Delay (s):", "throw_final_settle_delay", 0.05)
+        self.e_throw_pre_spam = add_entry("Pre-Spam Delay (s):", "throw_pre_spam_delay", 0.0)
+        self.e_throw_post_tab_spam = add_entry("Post-Tab to Spam Delay (s):", "throw_post_tab_to_spam_delay", 0.004)
+        
+        add_section("--- TAP TIMING ---")
+        self.e_throw_post_clumsy = add_entry("Post-Clumsy Tap Delay (s):", "throw_post_clumsy_tap_delay", 0.021)
+        self.e_throw_post_tab = add_entry("Post-Tab Tap Delay (s):", "throw_post_tab_tap_delay", 0.021)
+        self.e_throw_clumsy_deactivate = add_entry("Clumsy Deactivate After Spam (s):", "throw_clumsy_deactivate_after_spam", 0.20)
+        
+        add_section("--- KEY DWELL TIMES ---")
+        self.e_throw_tab_dwell = add_entry("Tab Dwell (s):", "throw_tab_dwell", 0.02)
+        self.e_throw_e_dwell = add_entry("E Dwell (s):", "throw_e_dwell", 0.0389)
+        
+        add_section("--- SPAM SETTINGS ---")
+        self.e_throw_spam_duration = add_entry("Spam Duration (s):", "throw_spam_duration", 2.25)
+        self.e_throw_e_period = add_entry("E Period (s):", "throw_e_period", 0.0219)
+        
+        add_section("--- DRAG SETTINGS ---")
+        self.e_throw_drag_time = add_entry("Drag Time (s):", "throw_drag_time", 0.5)
+        self.e_throw_drag_pixels = add_entry("Drag Left Pixels:", "throw_drag_left_pixels", -2000)
+    
+    def create_recording_tab(self):
+        frame = tk.Frame(self.notebook, bg=THEME["bg"])
+        self.notebook.add(frame, text="Recording")
+        
+        tk.Label(
+            frame,
+            text="Recording settings are managed\nthrough the main interface.",
+            bg=THEME["bg"],
+            fg="#888",
+            font=THEME["font_mono"],
+            justify="center"
+        ).pack(expand=True)
+    
+    def save_settings(self):
+        c = self.state["config"]
+        
+        try:
+            c["macro_hold_start"] = float(self.e_h_st.get())
+            c["macro_hold_len"] = float(self.e_h_ln.get())
+            c["macro_net_start"] = float(self.e_n_st.get())
+            c["macro_net_len"] = float(self.e_n_ln.get())
+            c["macro_spam_start"] = float(self.e_s_st.get())
+            c["macro_spam_len"] = float(self.e_s_ln.get())
+            
+            c["throw_start_settle_delay"] = float(self.e_throw_start_settle.get())
+            c["throw_pre_drag_delay"] = float(self.e_throw_pre_drag.get())
+            c["throw_tab_delay_after_drag"] = float(self.e_throw_tab_delay.get())
+            c["throw_final_settle_delay"] = float(self.e_throw_final_settle.get())
+            c["throw_pre_spam_delay"] = float(self.e_throw_pre_spam.get())
+            c["throw_post_tab_to_spam_delay"] = float(self.e_throw_post_tab_spam.get())
+            c["throw_post_clumsy_tap_delay"] = float(self.e_throw_post_clumsy.get())
+            c["throw_post_tab_tap_delay"] = float(self.e_throw_post_tab.get())
+            c["throw_clumsy_deactivate_after_spam"] = float(self.e_throw_clumsy_deactivate.get())
+            c["throw_tab_dwell"] = float(self.e_throw_tab_dwell.get())
+            c["throw_e_dwell"] = float(self.e_throw_e_dwell.get())
+            c["throw_spam_duration"] = float(self.e_throw_spam_duration.get())
+            c["throw_e_period"] = float(self.e_throw_e_period.get())
+            c["throw_drag_time"] = float(self.e_throw_drag_time.get())
+            c["throw_drag_left_pixels"] = int(self.e_throw_drag_pixels.get())
+            
+            self.save_config_func()
+            messagebox.showinfo("Saved", "Settings Updated!")
+        except ValueError as e:
+            messagebox.showerror("Error", f"Invalid value: {e}")

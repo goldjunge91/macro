@@ -5,48 +5,45 @@ from pynput import keyboard
 from input_control import (
     Input_I,
     MouseInput,
+    KeyBdInput,
     Input,
     SendInput,
     click_mouse_fast,
     keyboard_controller,
     mouse,
+    move_mouse_horizontal,
 )
 from pynput.mouse import Button
 
 
 def run_throw_macro(state):
-    # Verlasse früh, wenn Throw-Makro deaktiviert ist
     if not state["config"].get("throw_enabled", True):
         return
 
-    # Logge Start des Makros
     print(">> THROW MACRO: STARTING")
-    # Merke Startzeit für spätere Dauerberechnung
     start_time = time.perf_counter()
 
-    # === TIMING-KONSTANTEN (Original Bytecode Zeile 611-636) ===
-    KEY_START_SETTLE_DELAY = 0.03  # Warte zu Beginn für Stabilität
-    KEY_PRE_DRAG_DELAY = 0.06  # Kurzer Delay vor dem Drag (verlängert)
-    KEY_TAB_DELAY_AFTER_DRAG = 0.3  # Wartezeit nach Drag vor Tab (verlängert)
-    KEY_FINAL_SETTLE_DELAY = 0.05  # Abschluss-Delay nach Spam
-    KEY_PRE_SPAM_DELAY = 0.0  # Kein extra Delay: Spam soll sofort starten
-    KEY_CLUMSY_HOTKEY_E_START_DELAY = (
-        0.0  # Kein Delay zwischen Spam-Start und Clumsy-Off
-    )
-    KEY_POST_TAB_TO_E_SPAM_DELAY = 0.004  # Kurzer Delay zwischen Tab und Spam
+    c = state["config"]
+    KEY_START_SETTLE_DELAY = c.get("throw_start_settle_delay", 0.03)
+    KEY_PRE_DRAG_DELAY = c.get("throw_pre_drag_delay", 0.06)
+    KEY_TAB_DELAY_AFTER_DRAG = c.get("throw_tab_delay_after_drag", 0.3)
+    KEY_FINAL_SETTLE_DELAY = c.get("throw_final_settle_delay", 0.05)
+    KEY_PRE_SPAM_DELAY = c.get("throw_pre_spam_delay", 0.0)
+    KEY_CLUMSY_HOTKEY_E_START_DELAY = 0.0
+    KEY_POST_TAB_TO_E_SPAM_DELAY = c.get("throw_post_tab_to_spam_delay", 0.004)
 
-    POST_CLUMSY_TAP_DELAY = 0.021  # Puffer nach Clumsy-Hotkey (min 21ms)
-    POST_TAB_TAP_DELAY = 0.021  # Puffer nach Tab-Tap (min 21ms)
-    CLUMSY_DEACTIVATE_AFTER_SPAM = 0.20  # Clumsy-Toggle nach Spam-Start (s)
+    POST_CLUMSY_TAP_DELAY = c.get("throw_post_clumsy_tap_delay", 0.021)
+    POST_TAB_TAP_DELAY = c.get("throw_post_tab_tap_delay", 0.021)
+    CLUMSY_DEACTIVATE_AFTER_SPAM = c.get("throw_clumsy_deactivate_after_spam", 0.20)
 
-    KEY_TAB_DWELL = 0.02  # Tab Haltezeit
-    KEY_E_DWELL = 0.0389  # E Haltezeit
+    KEY_TAB_DWELL = c.get("throw_tab_dwell", 0.02)
+    KEY_E_DWELL = c.get("throw_e_dwell", 0.0389)
 
-    KEY_SPAM_DURATION = 2.25  # Dauer des E-Spams (zurück auf Original)
-    KEY_E_PERIOD = 0.0219  # Pause zwischen E-Presses
+    KEY_SPAM_DURATION = c.get("throw_spam_duration", 2.25)
+    KEY_E_PERIOD = c.get("throw_e_period", 0.0219)
 
-    KEY_DRAG_TIME = 0.5  # Drag-Gesamtdauer
-    KEY_DRAG_LEFT_PIXELS = -2000  # Drag-Distanz nach links
+    KEY_DRAG_TIME = c.get("throw_drag_time", 0.5)
+    KEY_DRAG_LEFT_PIXELS = c.get("throw_drag_left_pixels", -2000)
 
     # Importiere Clumsy-Hotkey-Funktion und Maus-/Tastatur-Helfer
     from network import send_clumsy_hotkey
@@ -133,6 +130,100 @@ def run_throw_macro(state):
 
     # Abschluss-Log mit Gesamtdauer
     print(f">> THROW MACRO: COMPLETE ({time.perf_counter() - start_time:.3f}s)")
+
+
+def run_throw_macro_v2(state, update_overlay, disconnect_net, reconnect_net):
+    """
+    Throw Macro Version 2 - Uses robust input methods from run_complex_macro
+    Sequence: Clumsy activate → Drag → Tab → E-spam → Clumsy deactivate
+    """
+    if not state["config"].get("throw_enabled", True):
+        return
+    
+    print(">> THROW MACRO V2: STARTING")
+    start_time = time.perf_counter()
+    
+    c = state["config"]
+    
+    KEY_START_SETTLE_DELAY = c.get("throw_start_settle_delay", 0.03)
+    KEY_PRE_DRAG_DELAY = c.get("throw_pre_drag_delay", 0.06)
+    KEY_TAB_DELAY_AFTER_DRAG = c.get("throw_tab_delay_after_drag", 0.3)
+    KEY_FINAL_SETTLE_DELAY = c.get("throw_final_settle_delay", 0.05)
+    KEY_POST_TAB_TO_E_SPAM_DELAY = c.get("throw_post_tab_to_spam_delay", 0.004)
+    
+    POST_TAB_TAP_DELAY = c.get("throw_post_tab_tap_delay", 0.021)
+    CLUMSY_DEACTIVATE_AFTER_SPAM = c.get("throw_clumsy_deactivate_after_spam", 0.20)
+    
+    KEY_TAB_DWELL = c.get("throw_tab_dwell", 0.02)
+    KEY_E_DWELL = c.get("throw_e_dwell", 0.0389)
+    
+    KEY_SPAM_DURATION = c.get("throw_spam_duration", 2.25)
+    KEY_E_PERIOD = c.get("throw_e_period", 0.0219)
+    
+    KEY_DRAG_TIME = c.get("throw_drag_time", 0.5)
+    KEY_DRAG_LEFT_PIXELS = c.get("throw_drag_left_pixels", -2000)
+    
+    E_KEYCODE = 0x45
+    TAB_KEYCODE = 0x09
+    
+    time.sleep(max(0.0, KEY_START_SETTLE_DELAY))
+    
+    print(">> THROW V2: ACTIVATING CLUMSY")
+    disconnect_net()
+    time.sleep(0.05)
+    
+    time.sleep(max(0.0, KEY_PRE_DRAG_DELAY))
+    
+    print(">> THROW V2: DRAG START")
+    extra = ctypes.c_ulong(0)
+    ii_ = Input_I()
+    ii_.mi = MouseInput(0, 0, 0, 0x0002, 0, ctypes.pointer(extra))
+    SendInput(1, ctypes.pointer(Input(ctypes.c_ulong(0), ii_)), ctypes.sizeof(Input))
+    
+    move_mouse_horizontal(KEY_DRAG_LEFT_PIXELS, duration=KEY_DRAG_TIME, steps=50)
+    
+    ii_.mi = MouseInput(0, 0, 0, 0x0004, 0, ctypes.pointer(extra))
+    SendInput(1, ctypes.pointer(Input(ctypes.c_ulong(0), ii_)), ctypes.sizeof(Input))
+    print(">> THROW V2: DRAG COMPLETE")
+    
+    time.sleep(max(0.0, KEY_TAB_DELAY_AFTER_DRAG))
+    
+    print(">> THROW V2: TAB PRESS")
+    ii_ = Input_I()
+    ii_.ki = KeyBdInput(TAB_KEYCODE, 0, 0, 0, ctypes.pointer(extra))
+    SendInput(1, ctypes.pointer(Input(ctypes.c_ulong(1), ii_)), ctypes.sizeof(Input))
+    time.sleep(KEY_TAB_DWELL)
+    ii_.ki = KeyBdInput(TAB_KEYCODE, 0, 0x0002, 0, ctypes.pointer(extra))
+    SendInput(1, ctypes.pointer(Input(ctypes.c_ulong(1), ii_)), ctypes.sizeof(Input))
+    
+    time.sleep(POST_TAB_TAP_DELAY)
+    time.sleep(max(0.0, KEY_POST_TAB_TO_E_SPAM_DELAY))
+    
+    print(">> THROW V2: E-SPAM START")
+    spam_start_time = time.perf_counter()
+    spam_end = spam_start_time + KEY_SPAM_DURATION
+    clumsy_deactivated = False
+    
+    while time.perf_counter() < spam_end:
+        ii_ = Input_I()
+        ii_.ki = KeyBdInput(E_KEYCODE, 0, 0, 0, ctypes.pointer(extra))
+        SendInput(1, ctypes.pointer(Input(ctypes.c_ulong(1), ii_)), ctypes.sizeof(Input))
+        time.sleep(KEY_E_DWELL)
+        ii_.ki = KeyBdInput(E_KEYCODE, 0, 0x0002, 0, ctypes.pointer(extra))
+        SendInput(1, ctypes.pointer(Input(ctypes.c_ulong(1), ii_)), ctypes.sizeof(Input))
+        
+        if not clumsy_deactivated and (time.perf_counter() - spam_start_time) >= CLUMSY_DEACTIVATE_AFTER_SPAM:
+            print(">> THROW V2: DEACTIVATING CLUMSY")
+            reconnect_net()
+            clumsy_deactivated = True
+        
+        time.sleep(KEY_E_PERIOD)
+    
+    print(">> THROW V2: E-SPAM COMPLETE")
+    
+    time.sleep(max(0.0, KEY_FINAL_SETTLE_DELAY))
+    
+    print(f">> THROW MACRO V2: COMPLETE ({time.perf_counter() - start_time:.3f}s)")
 
 
 def run_complex_macro(state, update_overlay, disconnect_net, reconnect_net):
