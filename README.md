@@ -1,44 +1,80 @@
-# ARC Raider Macro tool
+# ARC Dupe Macro - Refactored
 
-A simple macro/tool for duplicating Snitch Scanners in ARC Raiders using a network lag simulation technique (disconnect/reconnect timing to interrupt the throw action).
-How It Works
-This exploits a desync glitch by briefly simulating network issues during the throw animation, causing the server to register the animation but not the item drop—resulting in a duplicate spawning on the ground.
+This project has been refactored from a single `macro.py` file into multiple organized modules for better maintainability and code organization.
 
-Network Interface Detection
-The tool now supports both WiFi and Ethernet connections with automatic detection:
+## File Structure
 
-- **Auto-Detection**: Scans for active network interfaces with internet connectivity using psutil
-- **Interface Type Recognition**: Automatically identifies WiFi vs Ethernet interfaces
-- **Dropdown Selection**: Choose from detected active interfaces in the UI
-- **Smart Disconnect/Reconnect**:
-  - WiFi: Uses `netsh wlan disconnect` and reconnects to saved SSID
-  - Ethernet: Uses `netsh interface disable/enable`
-- **Refresh Button**: Manually refresh the list of available interfaces
+### Main Entry Point
 
-Setup & Usage
+- **main.py** - Application entry point with dependency checking and initialization
 
-Equip the Snitch Scanner in your hand.
-Go in-game to a safe area (or test in practice area).
-**Select your active network interface** from the dropdown (auto-detected on first run).
-Press the trigger key (default: F3) to run the macro.
+### Core Modules
 
-Tuning the Timings
-You'll need to adjust the Network Start Delay and Network Offline Time for your system and connection:
+- **config.py** - Configuration management (loading/saving settings and state)
+- **network.py** - Network operations (disconnect/reconnect, interface detection, admin checks)
+- **input_control.py** - Low-level keyboard and mouse control using ctypes and pynput
+- **macros.py** - Macro execution logic (complex macro and throw macro)
+- **recording.py** - Recording and playback functionality for input sequences
+- **hotkeys.py** - Hotkey event handlers for triggering macros and recordings
+- **gui.py** - GUI components (App window, Overlay, HackerButton, and all UI logic)
 
-Recommended starting values: Start Delay = 0.75s, Offline Time = 2.5s
-These work well for many, but vary by PC specs, ping, and network type (WiFi vs Ethernet).
+## Running the Application
 
-Testing Process:
+To run the application, use:
 
-Run the macro a few times.
-If the Snitch Scanner fully drops to the floor (and you lose it), timings are too off—reduce offline time or increase delay.
-Goal: It should only play the throw animation without actually dropping the item.
-Once that's consistent, fine-tune slightly until duplicates appear (two Scanners spawn on the floor).
-Success rate is ~90% with perfect timings—always test 2-3 runs per adjustment, as results can vary slightly.
+```bash
+python main.py
+```
 
-Requirements
+This will:
 
-- Python 3.7+
-- pynput (auto-installed)
-- psutil (auto-installed)
-- Windows OS with admin privileges (required for network commands)
+1. Check for required dependencies (pynput, psutil)
+2. Request admin privileges (required for network operations)
+3. Load configuration and recordings
+4. Start keyboard and mouse listeners
+5. Launch the GUI
+
+## Module Dependencies
+
+```txt
+main.py
+├── config.py (state management)
+├── network.py
+│   ├── input_control.py (for ctypes structures)
+│   └── psutil
+├── input_control.py
+│   └── pynput
+├── recording.py
+│   └── input_control.py
+├── macros.py
+│   ├── input_control.py
+│   └── network.py
+├── hotkeys.py
+│   └── pynput
+└── gui.py
+    └── tkinter
+```
+
+## Key Features
+
+- **Timeline-based macro system** - Coordinate multiple actions with precise timing
+- **Network lag simulation** - Disconnect/reconnect network or use Clumsy
+- **Input recording & playback** - Record and replay keyboard/mouse sequences
+- **Throw macro** - Specialized macro for specific game actions
+- **Overlay status** - Draggable overlay showing macro and network status
+
+## Configuration
+
+Settings are stored in `macro_config.json` and include:
+
+- Hotkey bindings
+- Network interface selection
+- Macro timing parameters
+- Recording settings
+- Overlay position
+
+## Notes
+
+- Requires Windows OS (uses netsh and Windows-specific APIs)
+- Requires administrator privileges for network operations
+- Recording files are saved in the `recordings/` directory
