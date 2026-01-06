@@ -35,7 +35,7 @@ check_dependencies()
 from pynput import keyboard
 from pynput.mouse import Listener as MouseListener
 
-from config import state, load_config, save_config
+from config import state, load_config, save_config, check_config_reload
 from network import (
     run_as_admin,
     auto_detect_interface,
@@ -50,7 +50,7 @@ from recording import (
     record_action,
     playback_recording,
 )
-from macros import run_complex_macro, run_throw_macro
+from macros import run_complex_macro, run_throw_macro, run_throw_macro_v2
 from gui import App, update_overlay
 from hotkeys import on_key_press, on_key_release, on_mouse_click, on_mouse_move
 
@@ -84,6 +84,18 @@ def create_run_complex_macro_wrapper():
 def create_run_throw_macro_wrapper():
     def wrapper():
         run_throw_macro(state)
+
+    return wrapper
+
+
+def create_run_throw_macro_v2_wrapper():
+    def wrapper():
+        run_throw_macro_v2(
+            state,
+            lambda: update_overlay(state),
+            create_disconnect_net_wrapper(),
+            create_reconnect_net_wrapper(),
+        )
 
     return wrapper
 
@@ -123,6 +135,7 @@ def create_on_key_press_wrapper():
             state,
             create_run_complex_macro_wrapper(),
             create_run_throw_macro_wrapper(),
+            create_run_throw_macro_v2_wrapper(),
             create_start_recording_wrapper(),
             create_stop_recording_wrapper(),
             create_playback_recording_wrapper(),
@@ -174,4 +187,12 @@ if __name__ == "__main__":
         on_click=create_on_mouse_click_wrapper(), on_move=create_on_mouse_move_wrapper()
     ).start()
 
-    App(state, save_config, get_active_network_interfaces).mainloop()
+    app = App(state, save_config, get_active_network_interfaces)
+
+    def check_reload():
+        if check_config_reload():
+            print(">> CONFIG: Configuration reloaded!")
+        app.after(1000, check_reload)
+
+    app.after(1000, check_reload)
+    app.mainloop()
