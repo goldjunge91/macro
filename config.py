@@ -1,6 +1,5 @@
 import json
 import os
-import time
 
 CONFIG_FILE = "macro_config.json"
 DEFAULT_CONFIG = {
