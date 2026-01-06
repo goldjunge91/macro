@@ -188,11 +188,11 @@ if __name__ == "__main__":
     ).start()
 
     app = App(state, save_config, get_active_network_interfaces)
-    
+
     def check_reload():
         if check_config_reload():
             print(">> CONFIG: Configuration reloaded!")
         app.after(1000, check_reload)
-    
+
     app.after(1000, check_reload)
     app.mainloop()

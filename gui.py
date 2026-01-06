@@ -26,19 +26,20 @@ THEME = {
 
 class ModernButton(tk.Button):
     """Modern styled button with hover effects"""
+
     def __init__(self, master, **kwargs):
-        style = kwargs.pop('style', 'primary')
+        style = kwargs.pop("style", "primary")
         super().__init__(master, **kwargs)
-        
-        if style == 'primary':
+
+        if style == "primary":
             bg_color = THEME["accent"]
             hover_color = THEME["accent_hover"]
             fg_color = THEME["bg"]
-        elif style == 'success':
+        elif style == "success":
             bg_color = THEME["success"]
             hover_color = "#00e67a"
             fg_color = THEME["bg"]
-        elif style == 'danger':
+        elif style == "danger":
             bg_color = THEME["warning"]
             hover_color = "#ff5252"
             fg_color = "white"
@@ -46,10 +47,10 @@ class ModernButton(tk.Button):
             bg_color = THEME["bg_card"]
             hover_color = THEME["border"]
             fg_color = THEME["text"]
-        
+
         self.bg_color = bg_color
         self.hover_color = hover_color
-        
+
         self.config(
             bg=bg_color,
             fg=fg_color,
@@ -60,15 +61,16 @@ class ModernButton(tk.Button):
             relief="flat",
             padx=20,
             pady=10,
-            cursor="hand2"
+            cursor="hand2",
         )
-        
+
         self.bind("<Enter>", lambda e: self.config(bg=self.hover_color))
         self.bind("<Leave>", lambda e: self.config(bg=self.bg_color))
 
 
 class Overlay(tk.Toplevel):
     """Status overlay window"""
+
     def __init__(self, master, state, save_config):
         super().__init__(master)
         self.state = state
@@ -76,10 +78,10 @@ class Overlay(tk.Toplevel):
         self.overrideredirect(True)
         self.attributes("-topmost", True, "-alpha", 0.92)
         self.config(bg=THEME["bg_secondary"])
-        
+
         container = tk.Frame(self, bg=THEME["bg_secondary"], padx=15, pady=10)
         container.pack(fill="both", expand=True)
-        
+
         self.lbl_status = tk.Label(
             container,
             text="● ONLINE",
@@ -88,7 +90,7 @@ class Overlay(tk.Toplevel):
             fg=THEME["success"],
         )
         self.lbl_status.pack(anchor="w")
-        
+
         self.lbl_macro = tk.Label(
             container,
             text="",
@@ -97,7 +99,7 @@ class Overlay(tk.Toplevel):
             fg=THEME["warning"],
         )
         self.lbl_macro.pack(anchor="w")
-        
+
         self.geometry(
             f"160x60+{state['config']['overlay_x']}+{state['config']['overlay_y']}"
         )
@@ -148,6 +150,7 @@ def update_overlay(state):
 
 class App(tk.Tk):
     """Main application window"""
+
     def __init__(self, state, save_config, get_active_network_interfaces):
         super().__init__()
         self.state = state
@@ -158,27 +161,34 @@ class App(tk.Tk):
         self.geometry("400x800")
         self.configure(bg=THEME["bg"])
         self.attributes("-topmost", True)
-        
+
         # Configure combobox style
         style = ttk.Style()
-        style.theme_use('clam')
-        style.configure("Modern.TCombobox",
-                       fieldbackground=THEME["bg_card"],
-                       background=THEME["bg_card"],
-                       foreground=THEME["text"],
-                       bordercolor=THEME["border"],
-                       arrowcolor=THEME["accent"])
-        style.map('Modern.TCombobox',
-                 fieldbackground=[('readonly', THEME["bg_card"])],
-                 selectbackground=[('readonly', THEME["accent"])],
-                 selectforeground=[('readonly', THEME["bg"])])
-        
+        style.theme_use("clam")
+        style.configure(
+            "Modern.TCombobox",
+            fieldbackground=THEME["bg_card"],
+            background=THEME["bg_card"],
+            foreground=THEME["text"],
+            bordercolor=THEME["border"],
+            arrowcolor=THEME["accent"],
+        )
+        style.map(
+            "Modern.TCombobox",
+            fieldbackground=[("readonly", THEME["bg_card"])],
+            selectbackground=[("readonly", THEME["accent"])],
+            selectforeground=[("readonly", THEME["bg"])],
+        )
+
         # Scrollable canvas
         self.canvas = tk.Canvas(self, bg=THEME["bg"], highlightthickness=0)
         self.scrollbar = tk.Scrollbar(
-            self, orient="vertical", command=self.canvas.yview,
-            bg=THEME["bg_secondary"], troughcolor=THEME["bg"],
-            activebackground=THEME["accent"]
+            self,
+            orient="vertical",
+            command=self.canvas.yview,
+            bg=THEME["bg_secondary"],
+            troughcolor=THEME["bg"],
+            activebackground=THEME["accent"],
         )
         self.scrollable_frame = tk.Frame(self.canvas, bg=THEME["bg"])
 
@@ -191,13 +201,13 @@ class App(tk.Tk):
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
 
         self.canvas.pack(side="left", fill="both", expand=True)
-        
+
         self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
 
         # Header
         header_frame = tk.Frame(self.scrollable_frame, bg=THEME["bg"])
         header_frame.pack(pady=(25, 5), fill="x", padx=25)
-        
+
         title_label = tk.Label(
             header_frame,
             text="Macro Controller",
@@ -206,7 +216,7 @@ class App(tk.Tk):
             fg=THEME["accent"],
         )
         title_label.pack(side="left")
-        
+
         settings_btn = tk.Button(
             header_frame,
             text="⚙",
@@ -217,10 +227,10 @@ class App(tk.Tk):
             cursor="hand2",
             command=self.open_settings,
             activebackground=THEME["bg"],
-            activeforeground=THEME["accent_hover"]
+            activeforeground=THEME["accent_hover"],
         )
         settings_btn.pack(side="right", padx=5)
-        
+
         subtitle = tk.Label(
             self.scrollable_frame,
             text="Configure and control your macros",
@@ -261,19 +271,29 @@ class App(tk.Tk):
         def create_card(title, icon=""):
             card = tk.Frame(self.frame, bg=THEME["bg_card"], padx=18, pady=15)
             card.pack(fill="x", pady=(0, 15))
-            
+
             header = tk.Frame(card, bg=THEME["bg_card"])
             header.pack(fill="x", pady=(0, 12))
-            
+
             if icon:
-                tk.Label(header, text=icon, font=("Segoe UI", 14),
-                        bg=THEME["bg_card"], fg=THEME["accent"]).pack(side="left", padx=(0, 10))
-            
-            tk.Label(header, text=title, font=THEME["font_subheader"],
-                    bg=THEME["bg_card"], fg=THEME["text"]).pack(side="left")
-            
+                tk.Label(
+                    header,
+                    text=icon,
+                    font=("Segoe UI", 14),
+                    bg=THEME["bg_card"],
+                    fg=THEME["accent"],
+                ).pack(side="left", padx=(0, 10))
+
+            tk.Label(
+                header,
+                text=title,
+                font=THEME["font_subheader"],
+                bg=THEME["bg_card"],
+                fg=THEME["text"],
+            ).pack(side="left")
+
             return card
-        
+
         def add_label(parent, text):
             tk.Label(
                 parent,
@@ -281,16 +301,16 @@ class App(tk.Tk):
                 bg=THEME["bg_card"],
                 fg=THEME["text"],
                 font=THEME["font_main"],
-                anchor="w"
+                anchor="w",
             ).pack(fill="x", pady=(8, 3))
-        
+
         def add_combobox(parent, values, default):
             cb = ttk.Combobox(
                 parent,
                 values=values,
                 font=THEME["font_mono"],
                 style="Modern.TCombobox",
-                state="readonly"
+                state="readonly",
             )
             cb.set(default)
             cb.pack(fill="x", pady=(0, 8))
@@ -298,12 +318,12 @@ class App(tk.Tk):
 
         # Network Card
         net_card = create_card("Network Configuration", "🌐")
-        
+
         add_label(net_card, "Network Method")
         self.cb_net_method = add_combobox(
             net_card,
             ["netsh", "Clumsy"],
-            self.state["config"].get("network_method", "netsh")
+            self.state["config"].get("network_method", "netsh"),
         )
         self.cb_net_method.bind("<<ComboboxSelected>>", self.on_method_change)
 
@@ -333,7 +353,10 @@ class App(tk.Tk):
                     break
 
         if not selected:
-            if interface_values and interface_values[0] != "No active interfaces detected":
+            if (
+                interface_values
+                and interface_values[0] != "No active interfaces detected"
+            ):
                 self.cb_iface.set(interface_values[0])
             elif current_iface:
                 self.cb_iface.set(f"{current_iface} ({current_type})")
@@ -342,7 +365,7 @@ class App(tk.Tk):
             self.frame_netsh,
             text="↻ Refresh Interfaces",
             command=self.refresh_interfaces,
-            style='secondary'
+            style="secondary",
         )
         self.btn_refresh.pack(fill="x", pady=(8, 0))
 
@@ -350,30 +373,32 @@ class App(tk.Tk):
         self.cb_clumsy_key = add_combobox(
             self.frame_clumsy,
             clumsy_keys,
-            self.state["config"].get("clumsy_hotkey", "8")
+            self.state["config"].get("clumsy_hotkey", "8"),
         )
 
         self.update_method_display()
 
         # Timeline Macro Card
         macro_card = create_card("Timeline Macro", "⚡")
-        
+
         add_label(macro_card, "Trigger Key")
-        self.cb_trig = add_combobox(macro_card, keys, self.state["config"]["key_macro_trigger"])
+        self.cb_trig = add_combobox(
+            macro_card, keys, self.state["config"]["key_macro_trigger"]
+        )
         self.cb_trig.bind("<<ComboboxSelected>>", lambda e: self.save())
 
         add_label(macro_card, "Disconnect Timing")
         self.cb_disc_mode = add_combobox(
             macro_card,
             ["After Click Start", "Before Click Start"],
-            self.state["config"].get("macro_disconnect_mode", "Before Click Start")
+            self.state["config"].get("macro_disconnect_mode", "Before Click Start"),
         )
         self.cb_disc_mode.bind("<<ComboboxSelected>>", lambda e: self.save())
 
         add_label(macro_card, f"Clicks Per Second: {self.state['config']['click_cps']}")
         slider_frame = tk.Frame(macro_card, bg=THEME["bg_card"])
         slider_frame.pack(fill="x", pady=(0, 8))
-        
+
         self.s_cps = tk.Scale(
             slider_frame,
             from_=1,
@@ -386,18 +411,20 @@ class App(tk.Tk):
             activebackground=THEME["accent"],
             sliderrelief="flat",
             bd=0,
-            command=lambda v: self.save()
+            command=lambda v: self.save(),
         )
         self.s_cps.set(self.state["config"]["click_cps"])
         self.s_cps.pack(fill="x")
 
         # Throw Macros Card
         throw_card = create_card("Throw Macros", "🎯")
-        
+
         add_label(throw_card, "Throw V1 Trigger (pynput)")
-        self.cb_throw_trig = add_combobox(throw_card, keys, self.state["config"]["key_throw_trigger"])
+        self.cb_throw_trig = add_combobox(
+            throw_card, keys, self.state["config"]["key_throw_trigger"]
+        )
         self.cb_throw_trig.bind("<<ComboboxSelected>>", lambda e: self.save())
-        
+
         tk.Label(
             throw_card,
             text="Clumsy toggle → Drag → Tab → E-spam",
@@ -408,9 +435,11 @@ class App(tk.Tk):
         ).pack(anchor="w", pady=(0, 8))
 
         add_label(throw_card, "Throw V2 Trigger (SendInput)")
-        self.cb_throw_v2_trig = add_combobox(throw_card, keys, self.state["config"].get("key_throw_v2_trigger", "Key.f7"))
+        self.cb_throw_v2_trig = add_combobox(
+            throw_card, keys, self.state["config"].get("key_throw_v2_trigger", "Key.f7")
+        )
         self.cb_throw_v2_trig.bind("<<ComboboxSelected>>", lambda e: self.save())
-        
+
         tk.Label(
             throw_card,
             text="Robust input • Same sequence as V1",
@@ -422,15 +451,19 @@ class App(tk.Tk):
 
         # Recording Card
         recording_card = create_card("Recording", "⏺")
-        
+
         add_label(recording_card, "Record Trigger")
-        self.cb_record_trig = add_combobox(recording_card, keys, self.state["config"]["key_record_trigger"])
+        self.cb_record_trig = add_combobox(
+            recording_card, keys, self.state["config"]["key_record_trigger"]
+        )
         self.cb_record_trig.bind("<<ComboboxSelected>>", lambda e: self.save())
 
         add_label(recording_card, "Playback Trigger")
-        self.cb_playback_trig = add_combobox(recording_card, keys, self.state["config"]["key_playback_trigger"])
+        self.cb_playback_trig = add_combobox(
+            recording_card, keys, self.state["config"]["key_playback_trigger"]
+        )
         self.cb_playback_trig.bind("<<ComboboxSelected>>", lambda e: self.save())
-        
+
         tk.Label(
             recording_card,
             text="Press RECORD to start/stop • Press PLAYBACK to replay",
@@ -442,32 +475,44 @@ class App(tk.Tk):
 
         # Control Card
         control_card = create_card("Controls", "🎮")
-        
+
         self.btn_macro = ModernButton(
-            control_card, text="✓ Macro Enabled", command=self.toggle_macro, style='success'
+            control_card,
+            text="✓ Macro Enabled",
+            command=self.toggle_macro,
+            style="success",
         )
         self.btn_macro.pack(fill="x", pady=3)
-        
+
         self.btn_throw = ModernButton(
-            control_card, text="✓ Throw Enabled", command=self.toggle_throw, style='success'
+            control_card,
+            text="✓ Throw Enabled",
+            command=self.toggle_throw,
+            style="success",
         )
         self.btn_throw.pack(fill="x", pady=3)
-        
+
         self.btn_recording = ModernButton(
-            control_card, text="✓ Recording Enabled", command=self.toggle_recording, style='success'
+            control_card,
+            text="✓ Recording Enabled",
+            command=self.toggle_recording,
+            style="success",
         )
         self.btn_recording.pack(fill="x", pady=3)
-        
+
         self.btn_ov = ModernButton(
-            control_card, text="✓ Overlay Enabled", command=self.toggle_ov, style='success'
+            control_card,
+            text="✓ Overlay Enabled",
+            command=self.toggle_ov,
+            style="success",
         )
         self.btn_ov.pack(fill="x", pady=3)
-        
+
         ModernButton(
             control_card,
             text="↻ Reload Application",
             command=lambda: os.execv(sys.executable, [sys.executable] + sys.argv),
-            style='danger',
+            style="danger",
         ).pack(fill="x", pady=(12, 3))
 
     def save(self):
@@ -492,7 +537,7 @@ class App(tk.Tk):
         c["key_throw_v2_trigger"] = self.cb_throw_v2_trig.get()
         c["key_record_trigger"] = self.cb_record_trig.get()
         c["key_playback_trigger"] = self.cb_playback_trig.get()
-        
+
         self.save_config_func()
         # Settings auto-save on every change, so no popup needed
 

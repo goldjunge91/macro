@@ -39,7 +39,9 @@ def on_key_press(
         throw_v2_target = parse_key_string(
             state["config"].get("key_throw_v2_trigger", "Key.f7")
         )
-        if key == throw_v2_target or (hasattr(key, "char") and key.char == throw_v2_target):
+        if key == throw_v2_target or (
+            hasattr(key, "char") and key.char == throw_v2_target
+        ):
             threading.Thread(target=run_throw_macro_v2).start()
 
         record_trigger = parse_key_string(
