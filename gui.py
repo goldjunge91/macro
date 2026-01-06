@@ -136,10 +136,10 @@ class App(tk.Tk):
             font=THEME["font_header"],
             bg=THEME["bg"],
             fg=THEME["fg"],
-        ).pack(pady=(20, 0))
+        ).pack(pady=(20, 10))
 
         self.frame = tk.Frame(self.scrollable_frame, bg=THEME["bg"])
-        self.frame.pack(fill="both", expand=True, padx=20)
+        self.frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
         self.build_ui()
         self.state["overlay_ref"] = Overlay(self, self.state, self.save_config_func)
         update_overlay(self.state)
@@ -162,11 +162,11 @@ class App(tk.Tk):
                 bg=THEME["bg"],
                 fg="#888",
                 font=("Consolas", 9, "bold"),
-            ).pack(anchor="w", pady=(10, 2))
+            ).pack(anchor="w", pady=(10, 2), padx=0)
 
         def add_entry(txt, key):
             f = tk.Frame(self.frame, bg=THEME["bg"])
-            f.pack(fill="x", pady=2)
+            f.pack(fill="x", pady=2, padx=0)
             tk.Label(
                 f, text=txt, bg=THEME["bg"], fg="white", width=18, anchor="w"
             ).pack(side="left")
@@ -181,12 +181,12 @@ class App(tk.Tk):
             bg=THEME["bg"],
             fg=THEME["fg"],
             font=THEME["font_mono"],
-        ).pack(anchor="w")
+        ).pack(anchor="w", padx=0)
         self.cb_net_method = ttk.Combobox(
             self.frame, values=["netsh", "Clumsy"], font=THEME["font_mono"]
         )
         self.cb_net_method.set(self.state["config"].get("network_method", "netsh"))
-        self.cb_net_method.pack(fill="x", pady=2)
+        self.cb_net_method.pack(fill="x", pady=2, padx=0)
         self.cb_net_method.bind("<<ComboboxSelected>>", self.on_method_change)
 
         self.frame_netsh = tk.Frame(self.frame, bg=THEME["bg"])
@@ -199,7 +199,7 @@ class App(tk.Tk):
             fg=THEME["fg"],
             font=THEME["font_mono"],
         )
-        self.lbl_iface.pack(anchor="w")
+        self.lbl_iface.pack(anchor="w", padx=0)
 
         active_interfaces = self.get_active_network_interfaces()
         interface_values = []
@@ -236,7 +236,7 @@ class App(tk.Tk):
             elif current_iface:
                 self.cb_iface.set(f"{current_iface} ({current_type})")
 
-        self.cb_iface.pack(fill="x", pady=2)
+        self.cb_iface.pack(fill="x", pady=2, padx=0)
 
         self.btn_refresh = HackerButton(
             self.frame_netsh,
@@ -244,7 +244,7 @@ class App(tk.Tk):
             command=self.refresh_interfaces,
             bg="#003333",
         )
-        self.btn_refresh.pack(fill="x", pady=2)
+        self.btn_refresh.pack(fill="x", pady=2, padx=0)
 
         self.lbl_clumsy = tk.Label(
             self.frame_clumsy,
@@ -253,12 +253,12 @@ class App(tk.Tk):
             fg=THEME["fg"],
             font=THEME["font_mono"],
         )
-        self.lbl_clumsy.pack(anchor="w")
+        self.lbl_clumsy.pack(anchor="w", padx=0)
         self.cb_clumsy_key = ttk.Combobox(
             self.frame_clumsy, values=clumsy_keys, font=THEME["font_mono"]
         )
         self.cb_clumsy_key.set(self.state["config"].get("clumsy_hotkey", "8"))
-        self.cb_clumsy_key.pack(fill="x", pady=2)
+        self.cb_clumsy_key.pack(fill="x", pady=2, padx=0)
 
         self.update_method_display()
 
@@ -268,10 +268,10 @@ class App(tk.Tk):
             bg=THEME["bg"],
             fg=THEME["fg"],
             font=THEME["font_mono"],
-        ).pack(anchor="w", pady=(10, 0))
+        ).pack(anchor="w", pady=(10, 0), padx=0)
         self.cb_trig = ttk.Combobox(self.frame, values=keys, font=THEME["font_mono"])
         self.cb_trig.set(self.state["config"]["key_macro_trigger"])
-        self.cb_trig.pack(fill="x", pady=2)
+        self.cb_trig.pack(fill="x", pady=2, padx=0)
 
         tk.Label(
             self.frame,
@@ -279,7 +279,7 @@ class App(tk.Tk):
             bg=THEME["bg"],
             fg=THEME["fg"],
             font=THEME["font_mono"],
-        ).pack(anchor="w", pady=(10, 0))
+        ).pack(anchor="w", pady=(10, 0), padx=0)
         self.cb_disc_mode = ttk.Combobox(
             self.frame,
             values=["After Click Start", "Before Click Start"],
@@ -288,7 +288,7 @@ class App(tk.Tk):
         self.cb_disc_mode.set(
             self.state["config"].get("macro_disconnect_mode", "Before Click Start")
         )
-        self.cb_disc_mode.pack(fill="x", pady=2)
+        self.cb_disc_mode.pack(fill="x", pady=2, padx=0)
 
         tk.Label(
             self.frame,
@@ -296,7 +296,7 @@ class App(tk.Tk):
             bg=THEME["bg"],
             fg=THEME["fg"],
             font=THEME["font_mono"],
-        ).pack(anchor="w", pady=(10, 0))
+        ).pack(anchor="w", pady=(10, 0), padx=0)
         self.s_cps = tk.Scale(
             self.frame,
             from_=1,
@@ -308,7 +308,7 @@ class App(tk.Tk):
             troughcolor="#222",
         )
         self.s_cps.set(self.state["config"]["click_cps"])
-        self.s_cps.pack(fill="x")
+        self.s_cps.pack(fill="x", padx=0)
 
         add_section("--- 1. HOLD CLICK ---")
         self.e_h_st = add_entry("Start Delay (s):", "macro_hold_start")
@@ -329,12 +329,12 @@ class App(tk.Tk):
             bg=THEME["bg"],
             fg=THEME["fg"],
             font=THEME["font_mono"],
-        ).pack(anchor="w", pady=(10, 0))
+        ).pack(anchor="w", pady=(10, 0), padx=0)
         self.cb_throw_trig = ttk.Combobox(
             self.frame, values=keys, font=THEME["font_mono"]
         )
         self.cb_throw_trig.set(self.state["config"]["key_throw_trigger"])
-        self.cb_throw_trig.pack(fill="x", pady=2)
+        self.cb_throw_trig.pack(fill="x", pady=2, padx=0)
 
         tk.Label(
             self.frame,
@@ -343,7 +343,7 @@ class App(tk.Tk):
             fg="#888",
             font=("Consolas", 8),
             justify="left",
-        ).pack(anchor="w", pady=2)
+        ).pack(anchor="w", pady=2, padx=0)
 
         add_section("--- RECORDING SETTINGS ---")
         tk.Label(
@@ -352,12 +352,12 @@ class App(tk.Tk):
             bg=THEME["bg"],
             fg=THEME["fg"],
             font=THEME["font_mono"],
-        ).pack(anchor="w", pady=(10, 0))
+        ).pack(anchor="w", pady=(10, 0), padx=0)
         self.cb_record_trig = ttk.Combobox(
             self.frame, values=keys, font=THEME["font_mono"]
         )
         self.cb_record_trig.set(self.state["config"]["key_record_trigger"])
-        self.cb_record_trig.pack(fill="x", pady=2)
+        self.cb_record_trig.pack(fill="x", pady=2, padx=0)
 
         tk.Label(
             self.frame,
@@ -365,12 +365,12 @@ class App(tk.Tk):
             bg=THEME["bg"],
             fg=THEME["fg"],
             font=THEME["font_mono"],
-        ).pack(anchor="w", pady=(5, 0))
+        ).pack(anchor="w", pady=(5, 0), padx=0)
         self.cb_playback_trig = ttk.Combobox(
             self.frame, values=keys, font=THEME["font_mono"]
         )
         self.cb_playback_trig.set(self.state["config"]["key_playback_trigger"])
-        self.cb_playback_trig.pack(fill="x", pady=2)
+        self.cb_playback_trig.pack(fill="x", pady=2, padx=0)
 
         tk.Label(
             self.frame,
@@ -379,35 +379,35 @@ class App(tk.Tk):
             fg="#888",
             font=("Consolas", 8),
             justify="left",
-        ).pack(anchor="w", pady=2)
+        ).pack(anchor="w", pady=2, padx=0)
 
         f_btn = tk.Frame(self.frame, bg=THEME["bg"])
-        f_btn.pack(fill="x", pady=20)
+        f_btn.pack(fill="x", pady=20, padx=0)
         self.btn_macro = HackerButton(
             f_btn, text="DISABLE MACRO", command=self.toggle_macro, bg="#003300"
         )
-        self.btn_macro.pack(fill="x", pady=2)
+        self.btn_macro.pack(fill="x", pady=2, padx=0)
         self.btn_throw = HackerButton(
             f_btn, text="DISABLE THROW", command=self.toggle_throw, bg="#003300"
         )
-        self.btn_throw.pack(fill="x", pady=2)
+        self.btn_throw.pack(fill="x", pady=2, padx=0)
         self.btn_recording = HackerButton(
             f_btn, text="DISABLE RECORDING", command=self.toggle_recording, bg="#003300"
         )
-        self.btn_recording.pack(fill="x", pady=2)
+        self.btn_recording.pack(fill="x", pady=2, padx=0)
         HackerButton(f_btn, text="SAVE SETTINGS", command=self.save).pack(
-            fill="x", pady=2
+            fill="x", pady=2, padx=0
         )
         self.btn_ov = HackerButton(
             f_btn, text="DISABLE OVERLAY", command=self.toggle_ov
         )
-        self.btn_ov.pack(fill="x", pady=2)
+        self.btn_ov.pack(fill="x", pady=2, padx=0)
         HackerButton(
             f_btn,
             text="RELOAD TOOL",
             command=lambda: os.execv(sys.executable, [sys.executable] + sys.argv),
             bg="#330000",
-        ).pack(fill="x", pady=2)
+        ).pack(fill="x", pady=2, padx=0)
 
     def save(self):
         c = self.state["config"]
