@@ -32,7 +32,7 @@ def check_dependencies():
 
 check_dependencies()
 
-from pynput import keyboard
+from pynput import keyboard  # noqa: E402
 from pynput.mouse import Listener as MouseListener
 
 from config import state, load_config, save_config, check_config_reload
@@ -42,6 +42,8 @@ from network import (
     get_active_network_interfaces,
     disconnect_net,
     reconnect_net,
+    start_clumsy,
+    stop_clumsy,
 )
 from recording import (
     load_recording,
@@ -178,6 +180,10 @@ if __name__ == "__main__":
         state["config"]["net_interface"] = interface_name
         state["config"]["net_interface_type"] = interface_type
 
+    # Start Clumsy if enabled in config
+    if state["config"].get("clumsy_auto_start", False):
+        start_clumsy(state)
+
     keyboard.Listener(
         on_press=create_on_key_press_wrapper(),
         on_release=create_on_key_release_wrapper(),
@@ -194,5 +200,12 @@ if __name__ == "__main__":
             print(">> CONFIG: Configuration reloaded!")
         app.after(1000, check_reload)
 
+    def on_closing():
+        # Cleanup: stop Clumsy if running
+        if state.get("clumsy_process") is not None:
+            stop_clumsy(state)
+        app.destroy()
+
+    app.protocol("WM_DELETE_WINDOW", on_closing)
     app.after(1000, check_reload)
     app.mainloop()

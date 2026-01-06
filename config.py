@@ -9,6 +9,8 @@ DEFAULT_CONFIG = {
     "net_interface_type": "WiFi",
     "network_method": "Clumsy",
     "clumsy_hotkey": "8",
+    "clumsy_exe_path": "bin/clumsy.exe",
+    "clumsy_auto_start": True,
     "macro_disconnect_mode": "Before Click Start",
     "macro_hold_start": 0.0,
     "macro_hold_len": 1.0,
@@ -65,6 +67,7 @@ state = {
     "current_recording_file": None,
     "last_recording_file": None,
     "config_last_modified": 0,
+    "clumsy_process": None,
 }
 
 

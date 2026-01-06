@@ -5,6 +5,12 @@ import shutil
 import json
 from pathlib import Path
 
+# Set UTF-8 encoding for better compatibility
+if sys.platform == "win32":
+    import io
+
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+
 
 class BuildConfig:
     """Configuration für den Build-Prozess"""
@@ -140,6 +146,14 @@ def build_with_pyinstaller(venv_python):
     if config_path.exists():
         args.extend(["--add-data", f"{BuildConfig.CONFIG_FILE}{os.pathsep}."])
 
+    # Clumsy-Binaries hinzufügen
+    bin_dir = BuildConfig.PROJECT_ROOT / "bin"
+    if bin_dir.exists():
+        args.extend(["--add-data", f"bin{os.pathsep}bin"])
+        print(f"✓ Clumsy-Binaries hinzugefügt: bin/")
+    else:
+        print(f"⚠ bin/ Verzeichnis nicht gefunden")
+
     try:
         print(f"→ Starte PyInstaller mit Entry Point: {BuildConfig.ENTRY_POINT}")
         subprocess.check_call(
@@ -148,6 +162,30 @@ def build_with_pyinstaller(venv_python):
             timeout=300,
         )
         print(f"✓ EXE erfolgreich erstellt: ./dist/{BuildConfig.APP_NAME}.exe")
+
+        # Copy Clumsy binaries to dist folder for --onefile distribution
+        dist_dir = BuildConfig.PROJECT_ROOT / "dist"
+        if bin_dir.exists() and dist_dir.exists():
+            print("→ Kopiere Clumsy-Binaries ins dist-Verzeichnis...")
+
+            # Kopiere die Hauptdateien
+            for file_name in [
+                "clumsy.exe",
+                "iup.dll",
+                "WinDivert.dll",
+                "WinDivert64.sys",
+                "config.txt",
+                "presets.ini",
+            ]:
+                src = bin_dir / file_name
+                dst = dist_dir / file_name
+                if src.exists():
+                    try:
+                        shutil.copy2(src, dst)
+                        print(f"✓ Kopiert: {file_name}")
+                    except Exception as e:
+                        print(f"⚠ Fehler beim Kopieren {file_name}: {e}")
+
         return True
     except subprocess.TimeoutExpired:
         print("✗ Fehler: PyInstaller-Prozess hat zu lange gedauert")
