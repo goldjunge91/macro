@@ -15,109 +15,123 @@ from pynput.mouse import Button
 
 
 def run_throw_macro(state):
-    """
-    KEY MACRO - 100% Original aus MacroV2.exe Bytecode (Zeilen 611-928)
-
-    Zeitlicher Ablauf (Gesamtdauer: ~3.28s):
-    0.000s: Start
-    0.030s: Initial Settle Delay
-    0.070s: Clumsy Hotkey drücken+loslassen (40ms press + 2ms post)
-    0.130s: PRE_DRAG_DELAY (60ms) ← WICHTIG!
-    0.130s: Linke Maustaste DOWN
-    0.630s: Drag 1300px links in 0.5s (mit Mouse Button down)
-    0.930s: TAB_DELAY_AFTER_DRAG (300ms)
-    0.950s: Tab drücken+loslassen (20ms + 2ms)
-    0.950s: Maus Button sicher loslassen
-    0.980s: PRE_SPAM_DELAY (30ms) ← WICHTIG!
-    0.984s: POST_TAB_TO_E_SPAM_DELAY (4ms)
-    0.984s: CLUMSY_HOTKEY_E_START_DELAY (0ms)
-    3.234s: E-Spam für 2.25s @ 45.7Hz (38.9ms down + 21.9ms up)
-    3.284s: STOP_DRAG_DELAY (50ms)
-    3.284s: Final mouse release check
-    """
+    # Verlasse früh, wenn Throw-Makro deaktiviert ist
     if not state["config"].get("throw_enabled", True):
         return
 
+    # Logge Start des Makros
     print(">> THROW MACRO: STARTING")
+    # Merke Startzeit für spätere Dauerberechnung
     start_time = time.perf_counter()
 
     # === TIMING-KONSTANTEN (Original Bytecode Zeile 611-636) ===
-    KEY_START_SETTLE_DELAY = 0.03  # Initial settle nach Start
-    KEY_PRE_DRAG_DELAY = 0.03  # WICHTIG: Delay VOR dem Drag
-    KEY_TAB_DELAY_AFTER_DRAG = 0.3  # Delay NACH dem Drag
-    KEY_STOP_DRAG_DELAY = 0.05  # Delay am Ende
-    KEY_PRE_SPAM_DELAY = 0.03  # WICHTIG: Extra delay vor E-Spam
-    KEY_CLUMSY_HOTKEY_E_START_DELAY = 0.01  # Zwischen Spam-Start und Clumsy
-    KEY_POST_TAB_TO_E_SPAM_DELAY = 0.004  # Zwischen Tab und E-Spam
+    KEY_START_SETTLE_DELAY = 0.03  # Warte zu Beginn für Stabilität
+    KEY_PRE_DRAG_DELAY = 0.06  # Kurzer Delay vor dem Drag (verlängert)
+    KEY_TAB_DELAY_AFTER_DRAG = 0.3  # Wartezeit nach Drag vor Tab (verlängert)
+    KEY_FINAL_SETTLE_DELAY = 0.05  # Abschluss-Delay nach Spam
+    KEY_PRE_SPAM_DELAY = 0.0  # Kein extra Delay: Spam soll sofort starten
+    KEY_CLUMSY_HOTKEY_E_START_DELAY = (
+        0.0  # Kein Delay zwischen Spam-Start und Clumsy-Off
+    )
+    KEY_POST_TAB_TO_E_SPAM_DELAY = 0.004  # Kurzer Delay zwischen Tab und Spam
 
-    KEY_CLUMSY_HOTKEY_DWELL = 0.04  # Clumsy Hotkey press duration
-    KEY_TAB_DWELL = 0.02  # Tab press duration
-    KEY_E_DWELL = 0.0389  # E press duration (38.9ms)
+    POST_CLUMSY_TAP_DELAY = 0.021  # Puffer nach Clumsy-Hotkey (min 21ms)
+    POST_TAB_TAP_DELAY = 0.021  # Puffer nach Tab-Tap (min 21ms)
+    CLUMSY_DEACTIVATE_AFTER_SPAM = 0.20  # Clumsy-Toggle nach Spam-Start (s)
 
-    KEY_SPAM_DURATION = 2.25  # E-Spam Gesamtdauer
-    KEY_E_PERIOD = 0.0219  # Pause zwischen E-Presses (21.9ms)
+    KEY_TAB_DWELL = 0.02  # Tab Haltezeit
+    KEY_E_DWELL = 0.0389  # E Haltezeit
 
-    KEY_DRAG_TIME = 0.5  # Drag-Dauer
-    KEY_DRAG_LEFT_PIXELS = -2000  # Pixel nach links (negativ!)
+    KEY_SPAM_DURATION = 2.25  # Dauer des E-Spams (zurück auf Original)
+    KEY_E_PERIOD = 0.0219  # Pause zwischen E-Presses
 
+    KEY_DRAG_TIME = 0.5  # Drag-Gesamtdauer
+    KEY_DRAG_LEFT_PIXELS = -2000  # Drag-Distanz nach links
+
+    # Importiere Clumsy-Hotkey-Funktion und Maus-/Tastatur-Helfer
     from network import send_clumsy_hotkey
     from input_control import move_mouse_horizontal, tap_tab
 
+    # Lese konfigurierten Clumsy-Hotkey
     clumsy_hotkey = state["config"].get("clumsy_hotkey", "8")
+    # KeyCode für die E-Taste vorbereiten
     E_KEY = keyboard.KeyCode.from_char("e")
 
     # ===== PHASE 1: Initial Settle + Clumsy Hotkey Press =====
-    time.sleep(max(0.0, KEY_START_SETTLE_DELAY))  # 30ms
+    # Kurze Pause zum Stabilisieren
+    time.sleep(max(0.0, KEY_START_SETTLE_DELAY))
 
-    # Clumsy Hotkey press (NICHT gehalten, nur tap!)
+    # Clumsy einmal kurz toggeln (send_clumsy_hotkey enthält bereits eigenes Timing)
     send_clumsy_hotkey(clumsy_hotkey)
-    time.sleep(KEY_CLUMSY_HOTKEY_DWELL)  # 40ms
-    time.sleep(0.002)  # post-delay
+    # Kurzer Puffer nach dem Clumsy-Hotkey
+    time.sleep(POST_CLUMSY_TAP_DELAY)
 
-    # ===== PHASE 2: PRE-DRAG DELAY (WICHTIG!) =====
-    time.sleep(max(0.0, KEY_PRE_DRAG_DELAY))  # 60ms
+    # ===== PHASE 2: PRE-DRAG DELAY =====
+    # Kurzer Delay vor dem Drag
+    time.sleep(max(0.0, KEY_PRE_DRAG_DELAY))
 
     # ===== PHASE 3: Mouse Drag mit Button Down =====
-    # Mouse button down WÄHREND des Drags
+    # Linke Maustaste drücken (halten)
     mouse.press(Button.left)
 
-    # Nutze die gesplitten move_mouse_horizontal Funktion
+    # Horizontalen Drag ausführen (links, 2000px, 0.5s)
     move_mouse_horizontal(KEY_DRAG_LEFT_PIXELS, duration=KEY_DRAG_TIME, steps=50)
 
+    # Maustaste nach dem Drag loslassen
+    mouse.release(Button.left)
+
     # ===== PHASE 4: Tab Press =====
-    time.sleep(max(0.0, KEY_TAB_DELAY_AFTER_DRAG))  # 300ms
+    # Wartezeit nach Drag, bevor Tab gesendet wird
+    time.sleep(max(0.0, KEY_TAB_DELAY_AFTER_DRAG))
 
-    # Nutze die gesplitten tap_tab Funktion
+    # Tab drücken (kurzer Tap)
     tap_tab(dwell=KEY_TAB_DWELL)
-    time.sleep(0.002)  # post-delay
+    # Mini-Post-Delay nach Tab
+    time.sleep(POST_TAB_TAP_DELAY)
 
-    # Tab force release (sicherheitshalber)
+    # Sicherheitshalber Tab loslassen
     keyboard_controller.release(keyboard.Key.tab)
 
-    # Mouse safe release (mit timeout)
-    mouse.release(Button.left)
-    time.sleep(0.001)  # kurze Pause für Release
-
-    # ===== PHASE 5: E-SPAM DELAYS (WICHTIG!) =====
-    time.sleep(max(0.0, KEY_PRE_SPAM_DELAY))  # 30ms
-    time.sleep(max(0.0, KEY_POST_TAB_TO_E_SPAM_DELAY))  # 4ms
-    time.sleep(max(0.0, KEY_CLUMSY_HOTKEY_E_START_DELAY))  # 0ms
+    # ===== PHASE 5: E-SPAM DELAYS =====
+    # Sofort weiter (kein zusätzlicher Delay)
+    time.sleep(max(0.0, KEY_PRE_SPAM_DELAY))
+    # Kurzer Delay zwischen Tab und Spam
+    time.sleep(max(0.0, KEY_POST_TAB_TO_E_SPAM_DELAY))
+    # Delay bis Clumsy wieder getoggelt wird
+    time.sleep(max(0.0, KEY_CLUMSY_HOTKEY_E_START_DELAY))
 
     # ===== PHASE 6: E-SPAM =====
-    spam_end = time.perf_counter() + KEY_SPAM_DURATION
+    # Spam-Startzeit merken
+    spam_start_time = time.perf_counter()
+    # Spam-Endzeit berechnen
+    spam_end = spam_start_time + KEY_SPAM_DURATION
+    # Flag: Clumsy schon deaktiviert?
+    clumsy_deactivated = False
+
     while time.perf_counter() < spam_end:
+        # E drücken
         keyboard_controller.press(E_KEY)
-        time.sleep(KEY_E_DWELL)  # 38.9ms down
+        # E gehalten lassen für dwell-Zeit
+        time.sleep(KEY_E_DWELL)
+        # E loslassen
         keyboard_controller.release(E_KEY)
-        time.sleep(KEY_E_PERIOD)  # 21.9ms pause
+
+        # Clumsy nach 0.20s Spam toggeln (späteres Deaktivieren)
+        if (
+            not clumsy_deactivated
+            and (time.perf_counter() - spam_start_time) >= CLUMSY_DEACTIVATE_AFTER_SPAM
+        ):
+            send_clumsy_hotkey(clumsy_hotkey)
+            clumsy_deactivated = True
+
+        # Pause bis zum nächsten E-Press
+        time.sleep(KEY_E_PERIOD)
 
     # ===== PHASE 7: Cleanup =====
-    time.sleep(max(0.0, KEY_STOP_DRAG_DELAY))  # 50ms
-    mouse.release(Button.left)  # Final mouse release check
+    # Abschluss-Delay
+    time.sleep(max(0.0, KEY_FINAL_SETTLE_DELAY))
 
-    # Clumsy Hotkey wieder zurück
-    send_clumsy_hotkey(clumsy_hotkey)
-
+    # Abschluss-Log mit Gesamtdauer
     print(f">> THROW MACRO: COMPLETE ({time.perf_counter() - start_time:.3f}s)")
 
 

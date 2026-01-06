@@ -14,8 +14,8 @@
   "macro_spam_len": 3.58,
   "macro_enabled": true,
   "overlay_enabled": true,
-  "overlay_x": 23,
-  "overlay_y": 35,
+  "overlay_x": 56,
+  "overlay_y": 51,
   "key_throw_trigger": "Key.f4",
   "throw_e_dwell": 0.03,
   "throw_after_e_before_tab_delay": 0.05,
@@ -31,5 +31,5 @@
   "throw_enabled": true,
   "key_record_trigger": "Key.f5",
   "key_playback_trigger": "Key.f8",
-  "recording_enabled": false
+  "recording_enabled": true
 }
