@@ -124,3 +124,7 @@ Desktop.ini
 # PyCharm
 .idea/
 /recordings
+# Clumsy binaries and dependencies
+/bin/*.exe
+/bin/*.dll
+/bin/*.sys

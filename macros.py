@@ -102,8 +102,21 @@ def run_throw_macro(state):
     spam_start_time = time.perf_counter()
     # Spam-Endzeit berechnen
     spam_end = spam_start_time + KEY_SPAM_DURATION
-    # Flag: Clumsy schon deaktiviert?
-    clumsy_deactivated = False
+
+    # Clumsy-Deaktivierung nicht-blockierend in separatem Thread ausführen,
+    # damit der E-Spam zeitlich stabil bleibt.
+    def _delayed_clumsy_deactivate():
+        try:
+            remain = CLUMSY_DEACTIVATE_AFTER_SPAM - (
+                time.perf_counter() - spam_start_time
+            )
+            if remain > 0:
+                time.sleep(remain)
+            send_clumsy_hotkey(clumsy_hotkey)
+        except Exception:
+            pass
+
+    threading.Thread(target=_delayed_clumsy_deactivate, daemon=True).start()
 
     while time.perf_counter() < spam_end:
         # E drücken
@@ -112,14 +125,6 @@ def run_throw_macro(state):
         time.sleep(KEY_E_DWELL)
         # E loslassen
         keyboard_controller.release(E_KEY)
-
-        # Clumsy nach 0.20s Spam toggeln (späteres Deaktivieren)
-        if (
-            not clumsy_deactivated
-            and (time.perf_counter() - spam_start_time) >= CLUMSY_DEACTIVATE_AFTER_SPAM
-        ):
-            send_clumsy_hotkey(clumsy_hotkey)
-            clumsy_deactivated = True
 
         # Pause bis zum nächsten E-Press
         time.sleep(KEY_E_PERIOD)
@@ -134,13 +139,18 @@ def run_throw_macro(state):
 
 def run_throw_macro_v2(state, update_overlay, disconnect_net, reconnect_net):
     """
-    Throw Macro Version 2 - Uses robust input methods from run_complex_macro
-    Sequence: Clumsy activate → Drag → Tab → E-spam → Clumsy deactivate
+    Throw Macro Version 2 - Uses robust input methods with parallel threading
+    Sequence: Clumsy activate → Drag → Tab → E-spam (with timed Clumsy deactivate)
     """
     if not state["config"].get("throw_enabled", True):
         return
 
+    if state.get("is_running_macro"):
+        return
+
+    state["is_running_macro"] = True
     print(">> THROW MACRO V2: STARTING")
+    update_overlay()
     start_time = time.perf_counter()
 
     c = state["config"]
@@ -166,71 +176,160 @@ def run_throw_macro_v2(state, update_overlay, disconnect_net, reconnect_net):
     E_KEYCODE = 0x45
     TAB_KEYCODE = 0x09
 
-    time.sleep(max(0.0, KEY_START_SETTLE_DELAY))
+    # Timeline-basierte Tasks wie in run_complex_macro
+    def task_network():
+        """Parallel task: Network disconnect at start, reconnect after spam delay"""
+        t0 = time.perf_counter()
+        print(f"[NET] t={0:.3f}s - Thread started")
+        time.sleep(KEY_START_SETTLE_DELAY)
+        print(
+            f"[NET] t={time.perf_counter()-t0:.3f}s - Settle complete, calling disconnect_net()"
+        )
 
-    print(">> THROW V2: ACTIVATING CLUMSY")
-    disconnect_net()
-    time.sleep(0.05)
+        # Merke Zeitpunkt vor disconnect, um echte Elapsed-Zeit zu messen
+        disconnect_start = time.perf_counter()
+        print(">> THROW V2: ACTIVATING CLUMSY")
+        disconnect_net()
+        disconnect_elapsed = time.perf_counter() - disconnect_start
+        print(
+            f"[NET] t={time.perf_counter()-t0:.3f}s - disconnect_net() complete (took {disconnect_elapsed:.3f}s)"
+        )
 
-    time.sleep(max(0.0, KEY_PRE_DRAG_DELAY))
+        # Warte bis zum Reconnect-Zeitpunkt
+        # Zeitstrahl (ab Start des Network-Threads, nach settle & disconnect):
+        # 0.05s Post-Clumsy-Puffer (liegt im Input-Thread)
+        # + PRE_DRAG_DELAY
+        # + DRAG_TIME
+        # + TAB_DELAY_AFTER_DRAG
+        # + TAB_DWELL (Tab wird wirklich gehalten)
+        # + POST_TAB_TAP_DELAY
+        # + POST_TAB_TO_E_SPAM_DELAY
+        # + CLUMSY_DEACTIVATE_AFTER_SPAM (Zeit bis Deaktivierung im Spam)
+        # Abziehen: tatsächliche Zeit, die disconnect_net() verbraucht hat
+        reconnect_time = (
+            0.05
+            + KEY_PRE_DRAG_DELAY
+            + KEY_DRAG_TIME
+            + KEY_TAB_DELAY_AFTER_DRAG
+            + KEY_TAB_DWELL
+            + POST_TAB_TAP_DELAY
+            + KEY_POST_TAB_TO_E_SPAM_DELAY
+            + CLUMSY_DEACTIVATE_AFTER_SPAM
+            - disconnect_elapsed
+        )
 
-    print(">> THROW V2: DRAG START")
-    extra = ctypes.c_ulong(0)
-    ii_ = Input_I()
-    ii_.mi = MouseInput(0, 0, 0, 0x0002, 0, ctypes.pointer(extra))
-    SendInput(1, ctypes.pointer(Input(ctypes.c_ulong(0), ii_)), ctypes.sizeof(Input))
+        print(
+            f"[NET] t={time.perf_counter()-t0:.3f}s - Waiting {reconnect_time:.3f}s before reconnect"
+        )
+        if reconnect_time > 0:
+            time.sleep(reconnect_time)
+        else:
+            print(
+                f"[NET] WARNING: reconnect_time is negative ({reconnect_time:.3f}s)! Skipping sleep."
+            )
 
-    move_mouse_horizontal(KEY_DRAG_LEFT_PIXELS, duration=KEY_DRAG_TIME, steps=50)
+        print(f"[NET] t={time.perf_counter()-t0:.3f}s - Calling reconnect_net()")
+        print(">> THROW V2: DEACTIVATING CLUMSY")
+        reconnect_net()
+        print(f"[NET] t={time.perf_counter()-t0:.3f}s - reconnect_net() complete")
 
-    ii_.mi = MouseInput(0, 0, 0, 0x0004, 0, ctypes.pointer(extra))
-    SendInput(1, ctypes.pointer(Input(ctypes.c_ulong(0), ii_)), ctypes.sizeof(Input))
-    print(">> THROW V2: DRAG COMPLETE")
+    def task_input_sequence():
+        """Main input sequence: Drag → Tab → E-spam"""
+        t0 = time.perf_counter()
+        print(f"[INPUT] t={0:.3f}s - Thread started")
+        time.sleep(KEY_START_SETTLE_DELAY)
+        print(f"[INPUT] t={time.perf_counter()-t0:.3f}s - Settle complete")
+        time.sleep(0.05)  # Post-clumsy delay
+        print(f"[INPUT] t={time.perf_counter()-t0:.3f}s - Post-clumsy delay complete")
+        time.sleep(KEY_PRE_DRAG_DELAY)
+        print(f"[INPUT] t={time.perf_counter()-t0:.3f}s - Pre-drag delay complete")
 
-    time.sleep(max(0.0, KEY_TAB_DELAY_AFTER_DRAG))
-
-    print(">> THROW V2: TAB PRESS")
-    ii_ = Input_I()
-    ii_.ki = KeyBdInput(TAB_KEYCODE, 0, 0, 0, ctypes.pointer(extra))
-    SendInput(1, ctypes.pointer(Input(ctypes.c_ulong(1), ii_)), ctypes.sizeof(Input))
-    time.sleep(KEY_TAB_DWELL)
-    ii_.ki = KeyBdInput(TAB_KEYCODE, 0, 0x0002, 0, ctypes.pointer(extra))
-    SendInput(1, ctypes.pointer(Input(ctypes.c_ulong(1), ii_)), ctypes.sizeof(Input))
-
-    time.sleep(POST_TAB_TAP_DELAY)
-    time.sleep(max(0.0, KEY_POST_TAB_TO_E_SPAM_DELAY))
-
-    print(">> THROW V2: E-SPAM START")
-    spam_start_time = time.perf_counter()
-    spam_end = spam_start_time + KEY_SPAM_DURATION
-    clumsy_deactivated = False
-
-    while time.perf_counter() < spam_end:
+        print(">> THROW V2: DRAG START")
+        print(
+            f"[INPUT] t={time.perf_counter()-t0:.3f}s - ⚠️  DRAG STARTING NOW (Mouse down)"
+        )
+        extra = ctypes.c_ulong(0)
         ii_ = Input_I()
-        ii_.ki = KeyBdInput(E_KEYCODE, 0, 0, 0, ctypes.pointer(extra))
+        ii_.mi = MouseInput(0, 0, 0, 0x0002, 0, ctypes.pointer(extra))
+        SendInput(
+            1, ctypes.pointer(Input(ctypes.c_ulong(0), ii_)), ctypes.sizeof(Input)
+        )
+
+        move_mouse_horizontal(KEY_DRAG_LEFT_PIXELS, duration=KEY_DRAG_TIME, steps=50)
+
+        ii_.mi = MouseInput(0, 0, 0, 0x0004, 0, ctypes.pointer(extra))
+        SendInput(
+            1, ctypes.pointer(Input(ctypes.c_ulong(0), ii_)), ctypes.sizeof(Input)
+        )
+        print(">> THROW V2: DRAG COMPLETE")
+        print(
+            f"[INPUT] t={time.perf_counter()-t0:.3f}s - Drag complete (Mouse released)"
+        )
+
+        time.sleep(KEY_TAB_DELAY_AFTER_DRAG)
+        print(f"[INPUT] t={time.perf_counter()-t0:.3f}s - Tab delay complete")
+
+        print(">> THROW V2: TAB PRESS")
+        print(f"[INPUT] t={time.perf_counter()-t0:.3f}s - Sending Tab key")
+        ii_ = Input_I()
+        ii_.ki = KeyBdInput(TAB_KEYCODE, 0, 0, 0, ctypes.pointer(extra))
         SendInput(
             1, ctypes.pointer(Input(ctypes.c_ulong(1), ii_)), ctypes.sizeof(Input)
         )
-        time.sleep(KEY_E_DWELL)
-        ii_.ki = KeyBdInput(E_KEYCODE, 0, 0x0002, 0, ctypes.pointer(extra))
+        time.sleep(KEY_TAB_DWELL)
+        ii_.ki = KeyBdInput(TAB_KEYCODE, 0, 0x0002, 0, ctypes.pointer(extra))
         SendInput(
             1, ctypes.pointer(Input(ctypes.c_ulong(1), ii_)), ctypes.sizeof(Input)
         )
 
-        if (
-            not clumsy_deactivated
-            and (time.perf_counter() - spam_start_time) >= CLUMSY_DEACTIVATE_AFTER_SPAM
-        ):
-            print(">> THROW V2: DEACTIVATING CLUMSY")
-            reconnect_net()
-            clumsy_deactivated = True
+        time.sleep(POST_TAB_TAP_DELAY)
+        time.sleep(KEY_POST_TAB_TO_E_SPAM_DELAY)
+        print(f"[INPUT] t={time.perf_counter()-t0:.3f}s - Pre-spam delays complete")
 
-        time.sleep(KEY_E_PERIOD)
+        print(">> THROW V2: E-SPAM START")
+        print(f"[INPUT] t={time.perf_counter()-t0:.3f}s - ⚠️  E-SPAM STARTING NOW")
+        spam_start_time = time.perf_counter()
+        spam_end = spam_start_time + KEY_SPAM_DURATION
 
-    print(">> THROW V2: E-SPAM COMPLETE")
+        while time.perf_counter() < spam_end:
+            ii_ = Input_I()
+            ii_.ki = KeyBdInput(E_KEYCODE, 0, 0, 0, ctypes.pointer(extra))
+            SendInput(
+                1, ctypes.pointer(Input(ctypes.c_ulong(1), ii_)), ctypes.sizeof(Input)
+            )
+            time.sleep(KEY_E_DWELL)
+            ii_.ki = KeyBdInput(E_KEYCODE, 0, 0x0002, 0, ctypes.pointer(extra))
+            SendInput(
+                1, ctypes.pointer(Input(ctypes.c_ulong(1), ii_)), ctypes.sizeof(Input)
+            )
+            time.sleep(KEY_E_PERIOD)
 
-    time.sleep(max(0.0, KEY_FINAL_SETTLE_DELAY))
+        print(">> THROW V2: E-SPAM COMPLETE")
+        print(
+            f"[INPUT] t={time.perf_counter()-t0:.3f}s - E-spam complete (duration: {time.perf_counter()-spam_start_time:.3f}s)"
+        )
+        time.sleep(KEY_FINAL_SETTLE_DELAY)
+        print(
+            f"[INPUT] t={time.perf_counter()-t0:.3f}s - Final settle complete, thread ending"
+        )
 
-    print(f">> THROW MACRO V2: COMPLETE ({time.perf_counter() - start_time:.3f}s)")
+    # Start parallel threads
+    t_net = threading.Thread(target=task_network)
+    t_input = threading.Thread(target=task_input_sequence)
+
+    t_net.start()
+    t_input.start()
+
+    # Waiter thread to cleanup
+    def waiter():
+        t_net.join()
+        t_input.join()
+        state["is_running_macro"] = False
+        elapsed = time.perf_counter() - start_time
+        print(f">> THROW MACRO V2: COMPLETE ({elapsed:.3f}s)")
+        update_overlay()
+
+    threading.Thread(target=waiter).start()
 
 
 def run_complex_macro(state, update_overlay, disconnect_net, reconnect_net):

@@ -4,6 +4,7 @@ import ctypes
 import re
 import psutil
 import time
+import os
 
 
 def is_admin():
@@ -365,3 +366,161 @@ def reconnect_net(state, update_overlay):
                 )
 
     update_overlay()
+
+
+def start_clumsy(state):
+    """
+    Start Clumsy executable if not already running.
+    Requires admin privileges. Returns True if started successfully.
+    """
+    try:
+        if state.get("clumsy_process") is not None:
+            # Überprüfe, ob der Prozess noch läuft
+            if not is_clumsy_running(state):
+                print(
+                    "!! WARNING: Clumsy process exists but is not running, removing stale reference"
+                )
+                state["clumsy_process"] = None
+            else:
+                print(">> CLUMSY: Clumsy already running")
+                return True
+
+        clumsy_path = state["config"].get("clumsy_exe_path", "bin/clumsy.exe")
+
+        # Versuche mehrere Pfade:
+        # 1. Direkter Pfad (wenn absolut)
+        # 2. Relativ zum aktuellen Arbeitsverzeichnis (für dist-Ordner)
+        # 3. Relativ zu sys.argv[0] (Skript-Verzeichnis)
+
+        candidates = []
+
+        # Kandidat 1: Absoluter Pfad
+        if os.path.isabs(clumsy_path):
+            candidates.append(clumsy_path)
+        else:
+            # Kandidat 2: Relativ zum aktuellen Arbeitsverzeichnis
+            candidates.append(os.path.join(os.getcwd(), clumsy_path))
+
+            # Kandidat 3: Nur Dateiname (falls wir bereits im richtigen Verzeichnis sind)
+            filename = os.path.basename(clumsy_path)
+            candidates.append(os.path.join(os.getcwd(), filename))
+
+            # Kandidat 4: Relativ zum Skript-Verzeichnis
+            import sys
+
+            if sys.argv:
+                project_root = os.path.dirname(os.path.abspath(sys.argv[0]))
+                candidates.append(os.path.join(project_root, clumsy_path))
+                candidates.append(os.path.join(project_root, filename))
+
+        # Finde die erste existierende Datei
+        abs_path = None
+        for candidate in candidates:
+            if os.path.exists(candidate):
+                abs_path = os.path.abspath(candidate)
+                print(f">> CLUMSY: Found clumsy.exe at: {abs_path}")
+                break
+
+        if abs_path is None:
+            print(f"!! ERROR: Clumsy executable not found")
+            print(f"   Searched paths:")
+            for i, candidate in enumerate(candidates, 1):
+                print(f"   {i}. {candidate}")
+            return False
+
+        clumsy_dir = os.path.dirname(abs_path)
+
+        print(f">> CLUMSY: Attempting to start: {abs_path}")
+
+        # Starte Clumsy OHNE neue Konsole zunächst, um Fehler zu erfassen
+        try:
+            process = subprocess.Popen(
+                [abs_path],
+                cwd=clumsy_dir,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+        except Exception as e:
+            print(f"!! ERROR: Failed to start process: {e}")
+            return False
+
+        # Warte kurz, um dem Prozess Zeit zum Starten zu geben
+        time.sleep(0.5)
+
+        # Überprüfe, ob der Prozess noch läuft
+        exit_code = process.poll()
+        if exit_code is not None:
+            # Der Prozess ist bereits beendet
+            stdout, stderr = process.communicate()
+            print(
+                f"!! ERROR: Clumsy process terminated immediately with exit code {exit_code}"
+            )
+            if stderr:
+                print(f">> Error output: {stderr}")
+            if stdout:
+                print(f">> Output: {stdout}")
+            print(">> Überprüfe:")
+            print("   - config.txt und presets.ini im selben Ordner?")
+            print("   - Sind iup.dll und WinDivert.dll im selben Ordner?")
+            print("   - Ist der WinDivert-Treiber installiert?")
+            print("   - Läufst du mit Admin-Rechten?")
+            return False
+
+        # Starte den Prozess neu mit GUI-Fenster im Hintergrund
+        process.terminate()
+        time.sleep(0.2)
+
+        process = subprocess.Popen(
+            [abs_path], cwd=clumsy_dir, creationflags=subprocess.CREATE_NEW_CONSOLE
+        )
+
+        state["clumsy_process"] = process
+        print(f">> CLUMSY: Successfully started Clumsy (PID: {process.pid})")
+        return True
+
+    except Exception as e:
+        print(f"!! ERROR: Failed to start Clumsy: {e}")
+        return False
+
+
+def stop_clumsy(state):
+    """
+    Stop the running Clumsy process if it exists.
+    Returns True if stopped successfully.
+    """
+    try:
+        if state.get("clumsy_process") is None:
+            return True
+
+        process = state["clumsy_process"]
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+            print(f">> CLUMSY: Terminated Clumsy process (PID: {process.pid})")
+
+        state["clumsy_process"] = None
+        return True
+
+    except Exception as e:
+        print(f"!! ERROR: Failed to stop Clumsy: {e}")
+        return False
+
+
+def is_clumsy_running(state):
+    """
+    Check if Clumsy process is currently running.
+    """
+    try:
+        if state.get("clumsy_process") is None:
+            return False
+
+        process = state["clumsy_process"]
+        return process.poll() is None
+
+    except Exception:
+        return False
