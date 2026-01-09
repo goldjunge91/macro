@@ -150,9 +150,9 @@ def build_with_pyinstaller(venv_python):
     bin_dir = BuildConfig.PROJECT_ROOT / "bin"
     if bin_dir.exists():
         args.extend(["--add-data", f"bin{os.pathsep}bin"])
-        print(f"✓ Clumsy-Binaries hinzugefügt: bin/")
+        print("✓ Clumsy-Binaries hinzugefügt: bin/")
     else:
-        print(f"⚠ bin/ Verzeichnis nicht gefunden")
+        print("⚠ bin/ Verzeichnis nicht gefunden")
 
     try:
         print(f"→ Starte PyInstaller mit Entry Point: {BuildConfig.ENTRY_POINT}")
