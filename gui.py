@@ -4,6 +4,7 @@ import sys
 import os
 import re
 from settings_window import SettingsWindow
+from config import validate_hotkeys
 
 # Modern Color Theme
 THEME = {
@@ -156,6 +157,8 @@ class App(tk.Tk):
         self.state = state
         self.save_config_func = save_config
         self.get_active_network_interfaces = get_active_network_interfaces
+        self.hotkey_choices = []
+        self.last_valid_hotkeys = {}
 
         self.title("Macro Controller")
         self.geometry("400x800")
@@ -515,6 +518,36 @@ class App(tk.Tk):
             style="danger",
         ).pack(fill="x", pady=(12, 3))
 
+        # Save initial hotkey snapshot for rollback on validation errors
+        self.last_valid_hotkeys = self._get_hotkey_values()
+
+    def _get_hotkey_values(self):
+        return {
+            "key_macro_trigger": self.cb_trig.get(),
+            "key_throw_trigger": self.cb_throw_trig.get(),
+            "key_throw_v2_trigger": self.cb_throw_v2_trig.get(),
+            "key_record_trigger": self.cb_record_trig.get(),
+            "key_playback_trigger": self.cb_playback_trig.get(),
+        }
+
+    def _apply_hotkey_values(self, values):
+        if "key_macro_trigger" in values:
+            self.cb_trig.set(values["key_macro_trigger"])
+        if "key_throw_trigger" in values:
+            self.cb_throw_trig.set(values["key_throw_trigger"])
+        if "key_throw_v2_trigger" in values:
+            self.cb_throw_v2_trig.set(values["key_throw_v2_trigger"])
+        if "key_record_trigger" in values:
+            self.cb_record_trig.set(values["key_record_trigger"])
+        if "key_playback_trigger" in values:
+            self.cb_playback_trig.set(values["key_playback_trigger"])
+
+    def _find_next_free_key(self, used_keys):
+        for key in self.hotkey_choices:
+            if key not in used_keys:
+                return key
+        return None
+
     def save(self):
         c = self.state["config"]
         c["key_macro_trigger"] = self.cb_trig.get()
@@ -537,8 +570,38 @@ class App(tk.Tk):
         c["key_throw_v2_trigger"] = self.cb_throw_v2_trig.get()
         c["key_record_trigger"] = self.cb_record_trig.get()
         c["key_playback_trigger"] = self.cb_playback_trig.get()
+        # Validate hotkeys - no duplicates allowed
+        is_valid, error_msg = validate_hotkeys(c)
+        if not is_valid:
+            messagebox.showerror("Fehler bei Hotkeyvalidierung", error_msg)
+
+            # Roll back to last valid hotkeys, or choose next free key if missing
+            fallback = dict(self.last_valid_hotkeys)
+            used = set(fallback.values())
+            for key_name in [
+                "key_macro_trigger",
+                "key_throw_trigger",
+                "key_throw_v2_trigger",
+                "key_record_trigger",
+                "key_playback_trigger",
+            ]:
+                if not fallback.get(key_name):
+                    next_free = self._find_next_free_key(used)
+                    if next_free:
+                        fallback[key_name] = next_free
+                        used.add(next_free)
+
+            self._apply_hotkey_values(fallback)
+
+            # Keep config consistent with the rolled-back values
+            for k, v in fallback.items():
+                c[k] = v
+            return
+
 
         self.save_config_func()
+        # Update last valid snapshot after successful save
+        self.last_valid_hotkeys = self._get_hotkey_values()
         # Settings auto-save on every change, so no popup needed
 
     def refresh_interfaces(self):

@@ -212,6 +212,7 @@ class TestRunThrowMacroV2:
     def test_throw_v2_basic_flow(self, mock_state):
         """Test basic flow of throw macro v2"""
         from macros import run_throw_macro_v2
+        import time
 
         update_overlay = Mock()
         disconnect_net = Mock()
@@ -236,6 +237,9 @@ class TestRunThrowMacroV2:
             run_throw_macro_v2(
                 mock_state, update_overlay, disconnect_net, reconnect_net
             )
+            
+            # Wait for threads to complete
+            time.sleep(0.2)
 
             # Verify network disconnect and reconnect
             disconnect_net.assert_called_once()
@@ -247,6 +251,7 @@ class TestRunThrowMacroV2:
     def test_throw_v2_network_timing(self, mock_state):
         """Test that network disconnect/reconnect happens at correct times"""
         from macros import run_throw_macro_v2
+        import time
 
         update_overlay = Mock()
         disconnect_net = Mock()
@@ -283,6 +288,9 @@ class TestRunThrowMacroV2:
             run_throw_macro_v2(
                 mock_state, update_overlay, disconnect_net, reconnect_net
             )
+            
+            # Wait for threads to complete
+            time.sleep(0.2)
 
             # Both should be called
             disconnect_net.assert_called_once()

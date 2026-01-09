@@ -1,3 +1,2 @@
-Server Port: udp and (udp.DstPort == 11700 or udp.SrcPort == 11700)
 All Packets Local: outbound or inbound
 All Packets remote: true

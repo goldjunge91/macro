@@ -307,3 +307,102 @@ class TestConfigIntegration:
             reloaded = check_config_reload()
             assert reloaded == True
             assert state["config"]["click_cps"] == 15
+
+
+class TestValidateHotkeys:
+    """Tests for validate_hotkeys function"""
+
+    def test_no_duplicates_valid(self):
+        """Test that valid config with no duplicate hotkeys passes"""
+        from config import validate_hotkeys
+
+        config = {
+            "key_macro_trigger": "Key.f3",
+            "key_throw_trigger": "Key.f4",
+            "key_throw_v2_trigger": "Key.f7",
+            "key_record_trigger": "Key.f5",
+            "key_playback_trigger": "Key.f6",
+        }
+
+        is_valid, error_msg = validate_hotkeys(config)
+        assert is_valid == True
+        assert error_msg == ""
+
+    def test_duplicate_macro_and_throw(self):
+        """Test detection of duplicate between macro and throw triggers"""
+        from config import validate_hotkeys
+
+        config = {
+            "key_macro_trigger": "Key.f3",
+            "key_throw_trigger": "Key.f3",  # Duplicate!
+            "key_throw_v2_trigger": "Key.f7",
+            "key_record_trigger": "Key.f5",
+            "key_playback_trigger": "Key.f6",
+        }
+
+        is_valid, error_msg = validate_hotkeys(config)
+        assert is_valid == False
+        assert "Key.f3" in error_msg
+        assert "doppelt" in error_msg
+
+    def test_duplicate_record_and_playback(self):
+        """Test detection of duplicate between record and playback triggers"""
+        from config import validate_hotkeys
+
+        config = {
+            "key_macro_trigger": "Key.f3",
+            "key_throw_trigger": "Key.f4",
+            "key_throw_v2_trigger": "Key.f7",
+            "key_record_trigger": "Key.f5",
+            "key_playback_trigger": "Key.f5",  # Duplicate!
+        }
+
+        is_valid, error_msg = validate_hotkeys(config)
+        assert is_valid == False
+        assert "Key.f5" in error_msg
+
+    def test_empty_hotkey_allowed(self):
+        """Test that empty hotkey values don't cause false positives"""
+        from config import validate_hotkeys
+
+        config = {
+            "key_macro_trigger": "Key.f3",
+            "key_throw_trigger": None,  # Empty
+            "key_throw_v2_trigger": "Key.f7",
+            "key_record_trigger": "Key.f5",
+            "key_playback_trigger": "Key.f6",
+        }
+
+        is_valid, error_msg = validate_hotkeys(config)
+        assert is_valid == True
+
+    def test_multiple_empty_hotkeys_allowed(self):
+        """Test that multiple empty hotkeys are allowed"""
+        from config import validate_hotkeys
+
+        config = {
+            "key_macro_trigger": None,
+            "key_throw_trigger": None,
+            "key_throw_v2_trigger": "Key.f7",
+            "key_record_trigger": None,
+            "key_playback_trigger": "Key.f6",
+        }
+
+        is_valid, error_msg = validate_hotkeys(config)
+        assert is_valid == True
+
+    def test_all_same_key_detected(self):
+        """Test detection when all triggers use the same key"""
+        from config import validate_hotkeys
+
+        config = {
+            "key_macro_trigger": "Key.f1",
+            "key_throw_trigger": "Key.f1",
+            "key_throw_v2_trigger": "Key.f1",
+            "key_record_trigger": "Key.f1",
+            "key_playback_trigger": "Key.f1",
+        }
+
+        is_valid, error_msg = validate_hotkeys(config)
+        assert is_valid == False
+        assert "Key.f1" in error_msg
