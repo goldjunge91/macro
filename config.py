@@ -106,19 +106,20 @@ def check_config_reload():
             print(f">> CONFIG: Error checking file: {e}")
     return False
 
+
 def validate_hotkeys(config):
     """Validate that no hotkey is assigned to multiple actions.
-    
+
     Returns: (is_valid, error_message)
     """
     hotkey_keys = [
         "key_macro_trigger",
-        "key_throw_trigger", 
+        "key_throw_trigger",
         "key_throw_v2_trigger",
         "key_record_trigger",
         "key_playback_trigger",
     ]
-    
+
     # Get all assigned keys
     assigned_keys = {}
     for key_name in hotkey_keys:
@@ -128,7 +129,10 @@ def validate_hotkeys(config):
                 # Found duplicate
                 action1 = assigned_keys[key_value]
                 action2 = key_name
-                return False, f"Taste '{key_value}' kann nicht doppelt zugewiesen werden:\n'{action1}' und '{action2}' nutzen dieselbe Taste."
+                return (
+                    False,
+                    f"Taste '{key_value}' kann nicht doppelt zugewiesen werden:\n'{action1}' und '{action2}' nutzen dieselbe Taste.",
+                )
             assigned_keys[key_value] = key_name
-    
+
     return True, ""

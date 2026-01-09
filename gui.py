@@ -598,7 +598,6 @@ class App(tk.Tk):
                 c[k] = v
             return
 
-
         self.save_config_func()
         # Update last valid snapshot after successful save
         self.last_valid_hotkeys = self._get_hotkey_values()
